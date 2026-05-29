@@ -7,7 +7,9 @@ const PAGE_LABELS: Record<string, string> = {
   '/admin/faqs':     'FAQs',
   '/admin/community': 'Community',
   '/admin/users':     'Users',
-  '/admin/settings':  'Settings',
+  '/admin/moderation': 'Moderation',
+  '/admin/leaderboard': 'Leaderboard',
+  '/admin/unresolved-search': 'FAQ Gaps',
 };
 
 interface AdminNavbarProps { onMobileMenuToggle: () => void; }

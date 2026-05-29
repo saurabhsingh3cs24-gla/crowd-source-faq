@@ -1,19 +1,25 @@
 import { Router } from 'express';
-import { semanticSearch, getTrending, getSuggest } from '../controllers/searchController.js';
 import { protect } from '../middleware/auth.js';
+import { adminOnly } from '../middleware/admin.js';
+import {
+  submitUnresolved,
+  getUnresolvedSearches,
+  resolveUnresolved,
+  getUnresolvedStats,
+} from '../controllers/unresolvedSearchController.js';
 
 const router = Router();
 
-// POST /api/search — Execute a hybrid (AI vector + keyword) search across FAQs and Community Posts
-// Protected: Requires a valid JWT token
-router.post('/', protect, semanticSearch);
+// Public: submit "No, I need more help" feedback (protect to capture userId)
+router.post('/unresolved', protect, submitUnresolved);
 
-// GET /api/search/trending — Fetch the top 6 most popular search queries from the analytics logs
-// Protected: Requires a valid JWT token
-router.get('/trending', protect, getTrending);
+// Admin: list unresolved searches
+router.get('/unresolved-list', adminOnly, getUnresolvedSearches);
 
-// GET /api/search/suggest — Lightweight text-only FAQ suggestion for SearchBar dropdown
-// Public: No auth required
-router.get('/suggest', getSuggest);
+// Admin: resolve an entry
+router.patch('/unresolved-search/:id/resolve', adminOnly, resolveUnresolved);
+
+// Admin: stats
+router.get('/unresolved-stats', adminOnly, getUnresolvedStats);
 
 export default router;

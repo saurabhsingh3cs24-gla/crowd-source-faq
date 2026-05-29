@@ -56,6 +56,16 @@ async function migrate() {
       key: { email: 1 },
       options: { unique: true, background: true },
     },
+    {
+      name: 'status+createdAt (unresolved)',
+      coll: 'yaksha_faq_unresolved_searches',
+      key: { status: 1, createdAt: -1 },
+    },
+    {
+      name: 'faqId (unresolved)',
+      coll: 'yaksha_faq_unresolved_searches',
+      key: { faqId: 1 },
+    },
   ];
 
   for (const idx of indexes) {

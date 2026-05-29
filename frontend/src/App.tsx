@@ -17,6 +17,7 @@ import AdminSettings from './admin/pages/AdminSettings';
 import AdminCommunity from './admin/pages/AdminCommunity';
 import AdminModeration from './admin/pages/AdminModeration';
 import AdminLeaderboard from './admin/pages/AdminLeaderboard';
+import AdminUnresolvedSearch from './admin/pages/AdminUnresolvedSearch';
 import AdminLayout from './admin/components/layout/AdminLayout';
 
 interface ProtectedRouteProps {
@@ -99,6 +100,7 @@ function AppRoutes() {
       <Route path="/admin/community" element={<AdminRoute><AdminLayout><AdminCommunity /></AdminLayout></AdminRoute>} />
       <Route path="/admin/moderation" element={<AdminRoute><AdminLayout><AdminModeration /></AdminLayout></AdminRoute>} />
       <Route path="/admin/leaderboard" element={<AdminRoute><AdminLayout><AdminLeaderboard /></AdminLayout></AdminRoute>} />
+      <Route path="/admin/unresolved-search" element={<AdminRoute><AdminLayout><AdminUnresolvedSearch /></AdminLayout></AdminRoute>} />
 
       {/* Catch-all fallback: Redirect any unknown URLs to the home page */}
       <Route path="*" element={<Navigate to="/" replace />} />
