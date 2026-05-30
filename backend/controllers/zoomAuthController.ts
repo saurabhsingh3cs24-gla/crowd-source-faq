@@ -65,6 +65,14 @@ export async function callbackZoom(req: Request, res: Response): Promise<void> {
   }
 
   try {
+    // Verify user role
+    const user = await User.findById(userId);
+    if (!user || user.role !== 'admin') {
+      logger.warn(`[Zoom OAuth] Non-admin user ${userId} attempted Zoom callback`);
+      res.redirect(`${process.env.CLIENT_URL ?? 'http://localhost:5173'}/account?zoom_error=${encodeURIComponent('Access denied. Only admins can connect Zoom.')}`);
+      return;
+    }
+
     // Exchange authorization code for tokens
     const tokens = await exchangeCodeForTokens(code);
 

@@ -23,10 +23,10 @@ const router = Router();
 // GET /api/zoom/auth/callback — Zoom OAuth redirect URI
 // DELETE /api/zoom/auth/disconnect — unlink Zoom account
 // GET    /api/zoom/auth/status   — check connection status
-router.get('/auth/connect',    protect, connectZoom);
+router.get('/auth/connect',    protect, authorize('admin'), connectZoom);
 router.get('/auth/callback',   callbackZoom);
-router.delete('/auth/disconnect', protect, disconnectZoom);
-router.get('/auth/status',     protect, zoomStatus);
+router.delete('/auth/disconnect', protect, authorize('admin'), disconnectZoom);
+router.get('/auth/status',     protect, authorize('admin'), zoomStatus);
 
 // ── Webhook (no auth — Zoom calls this) ───────────────────────────────────────
 router.get('/webhook',  handleZoomChallenge);
