@@ -1,42 +1,71 @@
-import React, { useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
 import { FAQItem, getQuestionTitle, getAnswerText, formatDate, formatCategoryName, TrustBadge, SourceBadge } from './faqUtils';
 import FreshnessBadge from '../ui/FreshnessBadge';
 
-interface QuestionItemProps {
-  item: FAQItem;
-  onSelect: (item: FAQItem) => void;
+/* ── Chevron icon (rotates on expand) ── */
+function ChevronDown() {
+  return (
+    <svg
+      className="faq-item__chevron"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
 }
 
-export function QuestionItem({ item, onSelect }: QuestionItemProps) {
+/* ── Single accordion FAQ card ── */
+interface QuestionItemProps {
+  item: FAQItem;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+export function QuestionItem({ item, isExpanded, onToggle }: QuestionItemProps) {
   const title = getQuestionTitle(item);
   const answer = getAnswerText(item);
   const metaDate = formatDate(item?.updatedAt || item?.createdAt);
   const sourceLabel = item?.source ? (item.source === 'faq' ? 'FAQ' : 'Community') : '';
-  // Freshness badge only renders for FAQ-sourced rows (community posts don't have review state)
   const showFreshness = item?.source === 'faq';
 
   return (
-    <button
-      onClick={() => onSelect(item)}
-      className="w-full text-left px-5 py-4 hover:bg-cream transition-colors"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-ink leading-snug line-clamp-2">
-            {title}
-            <TrustBadge level={item.trustLevel} />
-            <SourceBadge sourceType={item.sourceType} />
-          </p>
-          {answer && (
-            <p className="mt-1 text-xs text-ink-soft leading-relaxed line-clamp-2">
-              {answer}
-            </p>
+    <div className={`faq-item${isExpanded ? ' faq-item--expanded' : ''}`}>
+      {/* Question row — always visible */}
+      <div
+        className="faq-item__question"
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+      >
+        <span className="faq-item__question-text">
+          {title}
+          <TrustBadge level={item.trustLevel} />
+          <SourceBadge sourceType={item.sourceType} />
+        </span>
+        <ChevronDown />
+      </div>
+
+      {/* Expandable body */}
+      <div className="faq-item__body">
+        <div className="faq-item__body-content">
+          {answer ? (
+            <div className="faq-item__answer">{answer}</div>
+          ) : (
+            <div className="faq-item__answer" style={{ fontStyle: 'italic', opacity: 0.6 }}>
+              No answer available yet.
+            </div>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-ink-faint">
+
+          <div className="faq-item__meta">
             {sourceLabel && (
-              <span className="px-2 py-0.5 rounded-full bg-mist text-ink-soft">
-                {sourceLabel}
-              </span>
+              <span className="faq-item__meta-pill">{sourceLabel}</span>
             )}
             {item?.category && <span>{formatCategoryName(item.category)}</span>}
             {metaDate && <span>{metaDate}</span>}
@@ -52,16 +81,17 @@ export function QuestionItem({ item, onSelect }: QuestionItemProps) {
           </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
+/* ── Question list — accordion cards with sort + infinite scroll ── */
 interface QuestionListProps {
   items: FAQItem[];
   loading: boolean;
   sortOption: string;
   onSortChange: (val: string) => void;
-  onSelect: (item: FAQItem) => void;
+  onSelect?: (item: FAQItem) => void;  // kept for backward compat (search results)
   visibleCount: number;
   onLoadMore: () => void;
   emptyMessage: string;
@@ -72,11 +102,24 @@ export default function QuestionList({
   loading,
   sortOption,
   onSortChange,
-  onSelect,
   visibleCount,
   onLoadMore,
   emptyMessage,
 }: QuestionListProps) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleItem = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
   const sortedItems = useMemo(() => {
     if (!Array.isArray(items)) return [];
     if (sortOption === 'recent') {
@@ -111,17 +154,18 @@ export default function QuestionList({
   }, [handleIntersect]);
 
   return (
-    <div className="bg-card rounded-2xl border border-border shadow-subtle overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-border/60">
-        <p className="text-xs font-semibold text-ink-faint uppercase tracking-wide">
-          {sortedItems.length} questions
-        </p>
-        <div className="flex items-center gap-2 text-xs text-ink-soft">
-          <span>Sort</span>
+    <div>
+      {/* Sort bar */}
+      <div className="faq-sort-bar">
+        <span className="faq-sort-bar__count">
+          {sortedItems.length} question{sortedItems.length !== 1 ? 's' : ''}
+        </span>
+        <div className="flex items-center gap-2">
+          <span className="faq-sort-bar__count" style={{ fontSize: 11 }}>Sort</span>
           <select
             value={sortOption}
             onChange={(e) => onSortChange(e.target.value)}
-            className="rounded-full border border-border bg-card px-3 py-1 text-xs text-ink focus:outline-none"
+            className="faq-sort-bar__select"
           >
             <option value="relevant">Most relevant</option>
             <option value="recent">Most recent</option>
@@ -129,31 +173,45 @@ export default function QuestionList({
         </div>
       </div>
 
-      <div className="divide-y divide-border/60">
-        {loading && (
-          <div className="p-5 space-y-3 animate-pulse">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-14 rounded-xl bg-mist" />
-            ))}
-          </div>
-        )}
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="faq-item animate-pulse" style={{ minHeight: 64 }}>
+              <div className="h-4 rounded bg-mist w-3/4" />
+            </div>
+          ))}
+        </div>
+      )}
 
-        {!loading && visibleItems.map((item, idx) => (
-          <QuestionItem
-            key={item._id || item.title || item.question || idx}
-            item={item}
-            onSelect={onSelect}
-          />
-        ))}
+      {/* FAQ accordion cards */}
+      {!loading && (
+        <div className="space-y-4">
+          {visibleItems.map((item, idx) => {
+            const id = item._id || `faq-${idx}`;
+            return (
+              <QuestionItem
+                key={id}
+                item={item}
+                isExpanded={expandedIds.has(id)}
+                onToggle={() => toggleItem(id)}
+              />
+            );
+          })}
+        </div>
+      )}
 
-        {!loading && sortedItems.length === 0 && (
-          <div className="px-5 py-6 text-sm text-ink-soft">
+      {/* Empty state */}
+      {!loading && sortedItems.length === 0 && (
+        <div className="faq-item" style={{ textAlign: 'center', padding: '32px 20px' }}>
+          <p className="faq-item__question-text" style={{ fontWeight: 400, opacity: 0.6 }}>
             {emptyMessage}
-          </div>
-        )}
+          </p>
+        </div>
+      )}
 
-        {hasMore && <div ref={loadMoreRef} className="h-px" />}
-      </div>
+      {/* Infinite scroll sentinel */}
+      {hasMore && <div ref={loadMoreRef} className="h-px" />}
     </div>
   );
 }

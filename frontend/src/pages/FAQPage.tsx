@@ -480,11 +480,11 @@ export default function FAQPage() {
         )}
 
         {!loading && !error && !activeQuestion && searchActive && (
-          <section className="space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="max-w-4xl mx-auto">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <div>
                 <p className="text-xs font-semibold text-ink-faint uppercase tracking-wide">Search results</p>
-                <h2 className="text-lg font-semibold text-ink">Results for "{searchQuery}"</h2>
+                <h2 className="text-lg font-semibold text-ink">Results for &quot;{searchQuery}&quot;</h2>
               </div>
               <button
                 onClick={handleClearSearch}
@@ -499,7 +499,6 @@ export default function FAQPage() {
               loading={searchLoading}
               sortOption={sortOption}
               onSortChange={setSortOption}
-              onSelect={handleQuestionOpen}
               visibleCount={visibleCount}
               onLoadMore={() => setVisibleCount((prev) => prev + 6)}
               emptyMessage="No results yet. Try another keyword or browse a category."
@@ -508,33 +507,33 @@ export default function FAQPage() {
         )}
 
         {!loading && !error && !activeQuestion && !searchActive && activeCategory && (
-          <section className="space-y-5">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <button
-                  onClick={handleBackToCategories}
-                  className="inline-flex items-center gap-2 text-xs font-semibold text-ink-soft hover:text-ink transition-colors"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
-                  Back to categories
-                </button>
-                <h2 className="mt-3 text-xl font-semibold text-ink flex items-center gap-2">
-                  <span className="w-9 h-9 rounded-xl bg-mist flex items-center justify-center text-ink-faint">
-                    {getCategoryIcon(activeCategory)}
-                  </span>
-                  {formatCategoryName(activeCategory)}
-                </h2>
-                {activeCategoryMeta && (
-                  <p className="mt-2 text-sm text-ink-soft max-w-2xl">
-                    {activeCategoryMeta}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-ink-soft">
-                <span>{activeCategoryItems.length} questions</span>
-              </div>
+          <section className="max-w-4xl mx-auto">
+            {/* Header */}
+            <div className="mb-6">
+              <button
+                onClick={handleBackToCategories}
+                className="inline-flex items-center gap-2 text-xs font-semibold text-ink-soft hover:text-ink transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+                Back to categories
+              </button>
+              <h2 className="mt-3 text-xl font-semibold text-ink flex items-center gap-2">
+                <span className="w-9 h-9 rounded-xl bg-mist flex items-center justify-center text-ink-faint">
+                  {getCategoryIcon(activeCategory)}
+                </span>
+                {formatCategoryName(activeCategory)}
+              </h2>
+              {activeCategoryMeta && (
+                <p className="mt-2 text-sm text-ink-soft max-w-2xl">
+                  {activeCategoryMeta}
+                </p>
+              )}
+              <p className="faq-community-hint mt-3">
+                Can&apos;t find what you need?{' '}
+                <a href="/community">Ask in Community</a>
+              </p>
             </div>
 
             <QuestionList
@@ -546,7 +545,6 @@ export default function FAQPage() {
               loading={false}
               sortOption={sortOption}
               onSortChange={setSortOption}
-              onSelect={handleQuestionOpen}
               visibleCount={visibleCount}
               onLoadMore={() => setVisibleCount((prev) => prev + 6)}
               emptyMessage="No questions in this category yet."
