@@ -147,6 +147,66 @@ The admin panel at `/admin` (mounted at `/api/admin/*`) provides full operationa
 
 ---
 
+## User Experience
+
+The user-facing app (`/`, `/faq`, `/community`, `/saved`, `/account`) gives authenticated users full participation in the knowledge loop.
+
+### Pages
+- **HomePage** — hero search bar (floating bottom-center glassmorphism), trending FAQs, category grid
+- **FAQPage** — FAQ category browser with full-text + semantic search
+- **CommunityPage** — community Q&A board with stats banner, post cards, sort + filter
+- **SavedKnowledgePage** — bookmarked FAQs and community posts in one place
+- **AccountPage** — profile management, Zoom OAuth connect/disconnect, manual transcript upload
+- **LeaderboardPage** — public reputation leaderboard
+
+### Ask the Community
+- **Post creation** — `/api/community/` with Zod-validated title + body
+- **Duplicate detection** — `/api/community/check-duplicate` (debounced 500ms, min 10 chars) shows clickable banner when similar FAQ exists, blocks form submission on match
+- **Tags** — auto-normalized to lowercase for consistent search
+- **Attachments** — Cloudinary image uploads inline with the post body
+
+### Read & Engage
+- **Search** — `/api/search` (public): hybrid vector + keyword, RRF-merged, LRU + Redis cached
+- **Semantic suggest** — `/api/search/suggest` (public, rate-limited 30/min)
+- **Post detail modal** — full thread with status pill, lifecycle badge, vote counts, bookmark, share, attachments lightbox, comments
+- **Comment thread** — nested comments (max depth rendered), upvote/downvote with optimistic UI
+- **Accept answer** — post author can mark a comment as the accepted answer (locks verified/expert comments from edit)
+- **Edit & delete comments** — author can edit/delete own comments; admins can delete any
+- **Upvote posts** — `/api/community/:id/upvote` with reputation farming prevention (reverses +2 on removal)
+- **Bookmark** — `/api/community/:id/bookmark` toggle; bookmarks appear at `/saved`
+- **Share** — clipboard copy with confirmation toast
+- **Report** — flag inappropriate posts and FAQs for admin review
+- **Flag outdated** — `/api/faq/:id/flag` for FAQs that are no longer accurate
+
+### Notifications
+- **In-app bell** — `NotificationBell` component with unread count
+- **SpillTheTea events** — `post_answered`, `post_deleted`, `post_answered_user` etc. push to relevant users
+- **Notification settings** — per-event-type opt-in
+- **Email/SMS** — Twilio + SMTP for out-of-app delivery
+
+### Reputation
+- **Points** — +2 per post upvote, +5 per accepted comment, -2/-5 on removal
+- **Badges** — earned at thresholds (Newcomer, Contributor, Expert, etc.)
+- **Promotion to expert** — automatic review at reputation threshold; peers vote
+- **Leaderboard** — public ranking at `/leaderboard`
+
+### AI Assistant (`/ask-ai`)
+- **RAG-powered Q&A** — `/api/ask-ai` (public, 5/day anonymous quota via localStorage)
+- **Authenticated** — unlimited usage tied to account
+- **Sources cited** — every answer returns the top-k source FAQs / transcript knowledge used
+
+### Zoom Integration
+- **Per-user OAuth** — connect your own Zoom account from `/account`
+- **Manual upload** — upload `.vtt`, `.txt`, or paste raw text directly
+- **Status card** — shows last synced timestamp, OAuth health, failing-meeting count
+- **No admin required** — users own their ingestion flow end-to-end
+
+### Search Feedback
+- **"Report missing FAQ"** — when no results match, submit a query for admin follow-up
+- **Zero-result tracker** — admins can promote popular no-result queries to FAQs
+
+---
+
 ## Project Structure
 
 ```
