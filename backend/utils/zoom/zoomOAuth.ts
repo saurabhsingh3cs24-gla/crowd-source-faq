@@ -11,10 +11,10 @@
  */
 
 import crypto from 'crypto';
-import User from '../models/User.js';
-import { encrypt, decrypt } from './crypto.js';
-import { zoomOAuthCircuit, zoomApiCircuit, CircuitOpenError } from './circuitBreaker.js';
-import { logger } from './logger.js';
+import User from '../../models/User.js';
+import { encrypt, decrypt } from '../auth/crypto.js';
+import { zoomOAuthCircuit, zoomApiCircuit, CircuitOpenError } from '../http/circuitBreaker.js';
+import { logger } from '../http/logger.js';
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 

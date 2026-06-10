@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import FeatureFlag from '../models/FeatureFlag.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/http/logger.js';
 import { z } from 'zod';
 
 // Known flag keys — the canonical list. Anything else posted to the

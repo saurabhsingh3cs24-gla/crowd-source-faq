@@ -16,8 +16,8 @@
  * an admin change in the dashboard takes effect immediately for new requests.
  */
 
-import AiConfig from '../models/AiConfig.js';
-import { logger } from './logger.js';
+import AiConfig from '../../models/AiConfig.js';
+import { logger } from '../http/logger.js';
 
 export type AIProvider = 'anthropic' | 'openai' | 'xai' | 'minimax' | 'gemini' | 'custom';
 

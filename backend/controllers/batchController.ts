@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import Batch from '../models/Batch.js';
 import FAQ from '../models/FAQ.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/http/logger.js';
 import { z } from 'zod';
 import { invalidatePublicCaches } from './publicFaqController.js';
 

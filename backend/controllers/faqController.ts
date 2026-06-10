@@ -1,16 +1,16 @@
 import { Request, Response } from 'express';
 import mongoose, { Types } from 'mongoose';
 import FAQ, { type IFAQ } from '../models/FAQ.js';
-import { generateEmbedding } from '../utils/embeddings.js';
-import { logger } from '../utils/logger.js';
-import { invalidateCache } from '../utils/cache.js';
+import { generateEmbedding } from '../utils/ai/embeddings.js';
+import { logger } from '../utils/http/logger.js';
+import { invalidateCache } from '../utils/http/cache.js';
 import { createTeaDropsForFAQ } from './teaNotificationController.js';
 import FreshReviewVote from '../models/FreshReviewVote.js';
 import FreshReviewLog, { type FreshReviewEventType } from '../models/FreshReviewLog.js';
 import User, { calculateTier } from '../models/User.js';
 import ReputationLog from '../models/ReputationLog.js';
 import { autoAwardBadges } from './reputationController.js';
-import { sanitizeHtml } from '../utils/sanitize.js';
+import { sanitizeHtml } from '../utils/http/sanitize.js';
 import Batch from '../models/Batch.js';
 import { invalidatePublicCaches } from './publicFaqController.js';
 

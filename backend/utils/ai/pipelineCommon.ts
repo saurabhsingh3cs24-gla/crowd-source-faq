@@ -10,7 +10,7 @@
  * Used by: autoAnswerController, faqAuditController
  */
 import { Types } from 'mongoose';
-import { logger } from '../utils/logger.js';
+import { logger } from '../http/logger.js';
 
 // ─── Search with circuit-breaker fallback ─────────────────────────────────────
 
@@ -24,7 +24,7 @@ export async function searchKnowledgeWithFallback(
   topK = 5
 ): Promise<unknown[] | null> {
   try {
-    const { searchKnowledge } = await import('../services/knowledgeBase.js');
+    const { searchKnowledge } = await import('../../services/knowledgeBase.js');
     return await searchKnowledge(query, topK);
   } catch (err) {
     logger.warn(`[pipeline] searchKnowledge failed for "${query.slice(0, 50)}": ${(err as Error).message}`);
@@ -103,7 +103,7 @@ export async function touchDocument(
   const now = new Date();
   const inc = existingCycle != null ? { $inc: { reviewCycle: 1 }, $set: { lastCheckedAt: now } } : { $set: { lastCheckedAt: now } };
   // Dynamically resolve to avoid circular imports
-  const Model = (await import(`../models/${modelName}.js`)).default;
+  const Model = (await import(`../../models/${modelName}.js`)).default;
   await Model.updateOne({ _id: docId }, inc);
 }
 

@@ -8,7 +8,7 @@
  */
 
 import { Types } from 'mongoose';
-import Notification, { NotificationType } from '../models/Notification.js';
+import Notification, { NotificationType } from '../../models/Notification.js';
 import { logger } from './logger.js';
 
 // Note: a previous version of this file attempted to emit a real-time Socket.io

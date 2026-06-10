@@ -15,9 +15,9 @@
 import { Request, Response } from 'express';
 import FAQ from '../models/FAQ.js';
 import CommunityPost from '../models/CommunityPost.js';
-import { generateEmbedding } from '../utils/embeddings.js';
-import { detectDuplicatesWithAI } from '../utils/duplicateDetector.js';
-import { logger } from '../utils/logger.js';
+import { generateEmbedding } from '../utils/ai/embeddings.js';
+import { detectDuplicatesWithAI } from '../utils/ai/duplicateDetector.js';
+import { logger } from '../utils/http/logger.js';
 
 // ─── Thresholds ────────────────────────────────────────────────────────────────
 

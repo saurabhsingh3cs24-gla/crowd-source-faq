@@ -6,11 +6,11 @@
  * If NO provider key is configured, detectDuplicatesWithAI() returns [].
  */
 
-import FAQ from '../models/FAQ.js';
-import CommunityPost from '../models/CommunityPost.js';
+import FAQ from '../../models/FAQ.js';
+import CommunityPost from '../../models/CommunityPost.js';
 import { generateEmbedding } from './embeddings.js';
 import { resolveProviderAsync } from './aiProvider.js';
-import { logger } from './logger.js';
+import { logger } from '../http/logger.js';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 

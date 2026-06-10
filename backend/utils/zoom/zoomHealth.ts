@@ -11,9 +11,9 @@
  *   - number of failing meetings
  */
 
-import { zoomOAuthCircuit, zoomApiCircuit } from './circuitBreaker.js';
+import { zoomOAuthCircuit, zoomApiCircuit } from '../http/circuitBreaker.js';
 import { zoomCache } from './zoomCache.js';
-import { logger } from './logger.js';
+import { logger } from '../http/logger.js';
 
 export interface ZoomHealthStatus {
   overall: 'healthy' | 'degraded' | 'down';
@@ -60,7 +60,7 @@ export async function getZoomHealth(): Promise<ZoomHealthStatus> {
   let deadLetterCount = 0;
   let pendingRetryCount = 0;
   try {
-    const { ZoomMeeting } = await import('../models/ZoomMeeting.js');
+    const { ZoomMeeting } = await import('../../models/ZoomMeeting.js');
     failingMeetingsCount = await ZoomMeeting.countDocuments({ status: 'failed' });
     deadLetterCount = await ZoomMeeting.countDocuments({ status: 'dead_letter' });
     pendingRetryCount = await ZoomMeeting.countDocuments({

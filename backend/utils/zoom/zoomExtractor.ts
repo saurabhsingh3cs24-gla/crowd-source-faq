@@ -13,10 +13,10 @@
  *   4. Categorisation — each item is typed as 'FAQ' or 'Announcement'.
  */
 
-import { ZoomInsightType } from '../models/ZoomMeeting.js';
-import { resolveProviderAsync } from './aiProvider.js';
+import { ZoomInsightType } from '../../models/ZoomMeeting.js';
+import { resolveProviderAsync } from '../ai/aiProvider.js';
 import { parseVTTWithSpeakers, extractSnippet, isEmptyTranscript, TranscriptSegment } from './vttParser.js';
-import { logger } from './logger.js';
+import { logger } from '../http/logger.js';
 
 export interface ExtractedItem {
   type: ZoomInsightType;

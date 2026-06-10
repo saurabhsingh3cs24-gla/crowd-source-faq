@@ -9,9 +9,9 @@
  * - Never throws a bare Zoom error to the client — always returns a safe response
  */
 
-import { CircuitOpenError } from './circuitBreaker.js';
+import { CircuitOpenError } from '../http/circuitBreaker.js';
 import { zoomCache, ZoomCache } from './zoomCache.js';
-import { logger } from './logger.js';
+import { logger } from '../http/logger.js';
 
 /**
  * Failure scenarios this handles:

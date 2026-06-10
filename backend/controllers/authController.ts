@@ -5,9 +5,9 @@ import User, { IUser, UserRole } from '../models/User.js';
 import CommunityPost from '../models/CommunityPost.js';
 import Notification from '../models/Notification.js';
 import RevokedToken from '../models/RevokedToken.js';
-import { registerSchema, loginSchema, changePasswordSchema } from '../utils/validation.js';
-import { sanitizeHtml } from '../utils/sanitize.js';
-import { logger } from '../utils/logger.js';
+import { registerSchema, loginSchema, changePasswordSchema } from '../utils/auth/validation.js';
+import { sanitizeHtml } from '../utils/http/sanitize.js';
+import { logger } from '../utils/http/logger.js';
 
 // Helper: Generates a signed JWT using the user's ID, embedding a unique
 // `jti` so the token can be server-side revoked via RevokedToken.
@@ -196,7 +196,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
           // Lazy import — only load cloudinary utils if we actually need to
           // validate an avatar. Keeps /api/auth/profile responsive when no
           // avatar is being changed.
-          const { isOurCloudinaryAsset, getCloudinaryConfig } = await import('../utils/cloudinary.js');
+          const { isOurCloudinaryAsset, getCloudinaryConfig } = await import('../utils/http/cloudinary.js');
           const cfg = getCloudinaryConfig();
           if (!isOurCloudinaryAsset(avatar.url, cfg.cloudName)) {
             res.status(400).json({ message: 'avatar.url must be a valid Cloudinary URL for this account.' });

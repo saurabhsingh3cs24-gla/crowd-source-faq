@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import User, { calculateTier } from '../models/User.js';
 import ReputationLog from '../models/ReputationLog.js';
 import Badge from '../models/Badge.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/http/logger.js';
 
 // ─── Auto Badge Awarder ─────────────────────────────────────────────────────
 

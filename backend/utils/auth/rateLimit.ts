@@ -14,7 +14,7 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import jwt from 'jsonwebtoken';
 import { type Request, type Response } from 'express';
-import { logger } from './logger.js';
+import { logger } from '../http/logger.js';
 
 // ─── Shared key extractors ────────────────────────────────────────────────────
 

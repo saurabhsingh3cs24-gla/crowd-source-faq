@@ -24,7 +24,7 @@
  * and reviewed.
  */
 
-import type { TrustLevel } from '../models/FAQ.js';
+import type { TrustLevel } from '../../models/FAQ.js';
 
 // ── Weights (sum to 1.0; tweak together) ─────────────────────────────────────
 export const WEIGHTS = {

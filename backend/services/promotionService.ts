@@ -16,9 +16,9 @@ import mongoose, { Types } from 'mongoose';
 import CommunityPost from '../models/CommunityPost.js';
 import FAQ from '../models/FAQ.js';
 import User from '../models/User.js';
-import { generateEmbedding } from '../utils/embeddings.js';
-import { invalidateCache } from '../utils/cache.js';
-import { logger } from '../utils/logger.js';
+import { generateEmbedding } from '../utils/ai/embeddings.js';
+import { invalidateCache } from '../utils/http/cache.js';
+import { logger } from '../utils/http/logger.js';
 import type { Request, Response } from 'express';
 import type { LifecycleStatus } from '../models/CommunityPost.js';
 

@@ -26,20 +26,20 @@ import publicFaqRoutes from './routes/publicFaq.js';
 import batchRoutes from './routes/batch.js';
 import supportRoutes from './routes/support.js';
 import featureFlagRoutes from './routes/featureFlag.js';
-import { ingestFrontendLog } from './utils/fileLogger.js';
-import { logger } from './utils/logger.js';
-import { requestLogger } from './utils/requestLogger.js';
+import { ingestFrontendLog } from './utils/http/fileLogger.js';
+import { logger } from './utils/http/logger.js';
+import { requestLogger } from './utils/http/requestLogger.js';
 import { startEscalationScheduler, stopEscalationScheduler } from './controllers/escalationController.js';
 import { runScheduledAutoAnswer, stopAutoAnswerScheduler } from './controllers/autoAnswerController.js';
 import { runScheduledFAQAudit, stopFAQAuditScheduler } from './controllers/faqAuditController.js';
 import { retryFailedMeetings } from './services/retryService.js';
 import { runFreshnessCheck } from './controllers/freshnessController.js';
 import { runPromotionCycle } from './services/promotionService.js';
-import { getMetrics } from './utils/metrics.js';
-import { runWithContext } from './utils/requestContext.js';
+import { getMetrics } from './utils/http/metrics.js';
+import { runWithContext } from './utils/http/requestContext.js';
 import { flushSearchLogs } from './controllers/searchController.js';
-import { jobQueue } from './utils/jobQueue.js';
-import { getCloudinaryConfig } from './utils/cloudinary.js';
+import { jobQueue } from './utils/http/jobQueue.js';
+import { getCloudinaryConfig } from './utils/http/cloudinary.js';
 import { recomputePopularity } from './controllers/publicFaqController.js';
 import * as Sentry from '@sentry/node';
 import { expressIntegration } from '@sentry/node';
@@ -193,7 +193,7 @@ app.get('/api/health', async (req: Request, res: Response) => {
 // 6b. Warm-up endpoint — pre-loads the ML embedding model so first real request isn't slow
 app.post('/api/warm', async (_req: Request, res: Response) => {
   try {
-    await import('./utils/embeddings.js').then(m => m.warmEmbedder());
+    await import('./utils/ai/embeddings.js').then(m => m.warmEmbedder());
     res.json({ status: 'warmed' });
   } catch {
     res.status(500).json({ status: 'warm failed' });

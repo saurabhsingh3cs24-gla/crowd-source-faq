@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import FAQ from '../models/FAQ.js';
-import { countWords, expectedReadMs } from '../utils/popularityScore.js';
+import { countWords, expectedReadMs } from '../utils/http/popularityScore.js';
 
 await mongoose.connect(process.env.MONGODB_URI!);
 

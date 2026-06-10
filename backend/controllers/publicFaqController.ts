@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import FAQ from '../models/FAQ.js';
 import GuestEvent, { type GuestEventType } from '../models/GuestEvent.js';
-import { logger } from '../utils/logger.js';
+import { logger } from '../utils/http/logger.js';
 import { LRUCache } from 'lru-cache';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -10,7 +10,7 @@ import {
   buildScoreExpression,
   countWords,
   expectedReadMs,
-} from '../utils/popularityScore.js';
+} from '../utils/http/popularityScore.js';
 
 // ─── Public FAQ constants ─────────────────────────────────────────────────────
 
