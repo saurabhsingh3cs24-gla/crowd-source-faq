@@ -130,17 +130,24 @@ export async function fetchSpurtiStatus(): Promise<SpurtiStatus> {
   return res.data;
 }
 
+export interface GoldenQueueResponse {
+  items: GoldenQueueItem[];
+  myQueuePosition?: number;
+  ticketsAhead?: number;
+  mySpCost?: number;
+}
+
 /**
  * GET /api/support/golden/queue
  * Returns recent Golden tickets for the live Escalation Queue panel.
  * Non-admin callers see requester name as 'ANONYMOUS' for tickets
  * they didn't submit.
  */
-export async function fetchGoldenQueue(limit = 8): Promise<GoldenQueueItem[]> {
-  const res = await api.get<{ items: GoldenQueueItem[] }>('/support/golden/queue', {
+export async function fetchGoldenQueue(limit = 8): Promise<GoldenQueueResponse> {
+  const res = await api.get<GoldenQueueResponse>('/support/golden/queue', {
     params: { limit },
   });
-  return res.data.items ?? [];
+  return res.data;
 }
 
 /**

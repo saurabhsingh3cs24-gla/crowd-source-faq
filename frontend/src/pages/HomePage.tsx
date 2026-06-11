@@ -180,7 +180,7 @@ export default function ExplorePage(): React.ReactElement {
 
           {/* ─── Top three cards: Popular / Recent / Categories ────── */}
           {!showingSearch && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mt-2">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-4">
               <PopularFaqsCard batchId={batchId} onSelectFaq={setOpenFaq} />
               <RecentFaqsCard batchId={batchId} onSelectFaq={setOpenFaq} />
               <CategoriesCard batchId={batchId} onSelectCategory={handleSelectCategory} />
@@ -189,8 +189,8 @@ export default function ExplorePage(): React.ReactElement {
 
           {/* ─── All categories (collapsible) ─────────────────────── */}
           {!showingSearch && (
-            <section id="all-categories" className="mt-12">
-              <header className="flex items-baseline justify-between mb-4">
+            <section id="all-categories" className="mt-16">
+              <header className="flex items-baseline justify-between mb-8">
                 <h2 className="font-serif text-2xl text-ink">All Categories</h2>
                 <span className="text-xs text-ink-soft">
                   {categories.length} {categories.length === 1 ? 'topic' : 'topics'}
@@ -227,7 +227,7 @@ export default function ExplorePage(): React.ReactElement {
 
           {/* ─── Top Solved + Trending Issues Row ──────────────────────── */}
           {!showingSearch && (
-            <section className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 sm:gap-8 items-start mt-12">
+            <section className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-5 sm:gap-8 items-start mt-16">
               <TopSolved />
               <div className="lg:mt-14 mt-0">
                 <TrendingIssues />

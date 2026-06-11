@@ -54,7 +54,7 @@ export function EmptyState({
   icon?: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-8 px-4">
+    <div className="flex-1 flex flex-col items-center justify-center text-center py-8 px-4 h-full min-h-[160px]">
       {icon ?? (
         <div className="w-10 h-10 rounded-full bg-mist flex items-center justify-center mb-3 text-ink-faint">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">

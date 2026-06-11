@@ -19,6 +19,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -62,6 +63,39 @@ function formatCountdown(ms: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
+function AnimatedDigit({ digit }: { digit: string }) {
+  return (
+    <span className="relative inline-block w-[0.6em] h-[1em] overflow-hidden align-bottom">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={digit}
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "-100%" }}
+          transition={{ duration: 0.25, ease: "easeInOut" }}
+          className="absolute inset-0 flex items-center justify-center"
+        >
+          {digit}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+function AnimatedNumber({ value }: { value: string }) {
+  return (
+    <div className="flex items-center justify-center">
+      {value.split('').map((char, i) => (
+        char === ':' ? (
+          <span key={i} className="mx-[2px] pb-1">{char}</span>
+        ) : (
+          <AnimatedDigit key={i} digit={char} />
+        )
+      ))}
+    </div>
+  );
+}
+
 export default function GoldenTicketPage(): React.ReactElement {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -77,13 +111,15 @@ export default function GoldenTicketPage(): React.ReactElement {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [queue, setQueue] = useState<GoldenQueueItem[]>([]);
+  const [myQueuePosition, setMyQueuePosition] = useState<number | null>(null);
+  const [ticketsAhead, setTicketsAhead] = useState<number | null>(null);
+  const [mySpCost, setMySpCost] = useState<number | null>(null);
   const [queueLoading, setQueueLoading] = useState(false);
 
-  // Live "now" for countdown text. Refetched every 30s so the
-  // countdown text doesn't go stale between user interactions.
+  // Live "now" for countdown text. Refetched every second for smooth timer.
   const [now, setNow] = useState<number>(Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, []);
 
@@ -115,10 +151,16 @@ export default function GoldenTicketPage(): React.ReactElement {
     if (!isAuthed) return;
     setQueueLoading(true);
     try {
-      const items = await fetchGoldenQueue(8);
+      const { items, myQueuePosition, ticketsAhead, mySpCost } = await fetchGoldenQueue(8);
       setQueue(items);
+      setMyQueuePosition(myQueuePosition ?? null);
+      setTicketsAhead(ticketsAhead ?? null);
+      setMySpCost(mySpCost ?? null);
     } catch {
       setQueue([]);
+      setMyQueuePosition(null);
+      setTicketsAhead(null);
+      setMySpCost(null);
     } finally {
       setQueueLoading(false);
     }
@@ -127,9 +169,9 @@ export default function GoldenTicketPage(): React.ReactElement {
   useEffect(() => { void reloadStatus(); }, [reloadStatus]);
   useEffect(() => { void reloadQueue(); }, [reloadQueue]);
 
-  const inCooldown = status ? !status.canSubmitGolden : false;
   const cooldownEndsAt = status?.cooldownEndsAt ?? null;
   const cooldownMsLeft = cooldownEndsAt ? Math.max(0, new Date(cooldownEndsAt).getTime() - now) : 0;
+  const inCooldown = cooldownMsLeft > 0;
 
   const canSubmit =
     isAuthed &&
@@ -251,10 +293,10 @@ export default function GoldenTicketPage(): React.ReactElement {
               You may raise another Golden Ticket after the cooldown expires.
             </p>
             <div
-              className="font-mono text-5xl tabular-nums text-accent font-semibold tracking-wider"
+              className="font-mono text-5xl tabular-nums text-accent font-semibold tracking-wider flex justify-center w-full"
               aria-label={`Time remaining: ${formatRemaining(cooldownMsLeft)}`}
             >
-              {formatCountdown(cooldownMsLeft)}
+              <AnimatedNumber value={formatCountdown(cooldownMsLeft)} />
             </div>
             <p className="text-xs text-ink-faint mt-3 tabular-nums">
               {cooldownMsLeft > 0 ? formatRemaining(cooldownMsLeft) : 'unlocking…'}
@@ -343,41 +385,76 @@ export default function GoldenTicketPage(): React.ReactElement {
         )}
 
         {/* ── Right column: Escalation Queue (always visible) ──── */}
-        <aside className="bg-card border border-border rounded-2xl p-6 shadow-sm">
-          <h2 className="text-sm font-semibold text-ink mb-4">Escalation Queue</h2>
-
-          {queueLoading && queue.length === 0 ? (
-            <p className="text-sm text-ink-soft">Loading…</p>
-          ) : queue.length === 0 ? (
-            <p className="text-sm text-ink-soft">
-              No escalations yet. Be the first to file a Golden Ticket.
-            </p>
-          ) : (
-            <ul className="space-y-3">
-              {queue.map((item) => (
-                <li
-                  key={item._id}
-                  className="rounded-xl border border-border/60 bg-bg/50 p-3"
-                >
-                  <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
-                      {item.userName}
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-accent">
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                        <path d="M12 2 c 0 6 -6 6 -6 12 a 6 6 0 0 0 12 0 c 0 -3 -2 -5 -3 -7 c -1 2 -3 3 -3 -5 z" />
-                      </svg>
-                      {item.spCost} SP
-                    </span>
+        <aside className="flex flex-col gap-6">
+          {myQueuePosition != null && ticketsAhead != null && mySpCost != null && (
+            <div className="rounded-2xl bg-gradient-to-br from-accent/30 to-accent/5 p-[1px] shadow-sm">
+              <div className="rounded-[15px] bg-card p-5 backdrop-blur-xl">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-serif text-lg text-ink">Your Escalation</h3>
+                  <span className="inline-flex items-center justify-center rounded-full bg-accent/20 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-accent animate-pulse">
+                    Active
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-4 text-center divide-x divide-border/60">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-ink-soft mb-1">Position</p>
+                    <p className="font-mono text-2xl font-bold text-ink">#{myQueuePosition}</p>
                   </div>
-                  <p className="text-sm text-ink line-clamp-1">{item.title}</p>
-                  {item.details && (
-                    <p className="text-xs text-ink-soft mt-1 line-clamp-2 italic">"{item.details}"</p>
-                  )}
-                </li>
-              ))}
-            </ul>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-ink-soft mb-1">SP Spent</p>
+                    <p className="font-mono text-2xl font-bold text-accent">{mySpCost}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-ink-soft mb-1">Ahead</p>
+                    <p className="font-mono text-2xl font-bold text-ink">{ticketsAhead}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
+
+          <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex-1">
+            <h2 className="text-sm font-semibold text-ink mb-4">Escalation Queue</h2>
+
+            {queueLoading && queue.length === 0 ? (
+              <p className="text-sm text-ink-soft">Loading…</p>
+            ) : queue.length === 0 ? (
+              <p className="text-sm text-ink-soft whitespace-pre-line">
+                No escalations yet.{"\n"}Be the first to file a Golden Ticket.
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {queue.map((item, index) => (
+                  <li
+                    key={item._id}
+                    className="relative rounded-2xl border border-border/50 bg-card/40 p-4 shadow-sm backdrop-blur-md overflow-hidden group hover:border-accent/40 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/10 font-mono text-sm font-bold text-accent group-hover:bg-accent group-hover:text-bg transition-colors">
+                          #{index + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-serif text-base text-ink line-clamp-1">{item.title}</p>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+                            {item.userName}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right mt-0.5">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-2.5 py-1 text-xs font-bold text-accent">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M12 2 c 0 6 -6 6 -6 12 a 6 6 0 0 0 12 0 c 0 -3 -2 -5 -3 -7 c -1 2 -3 3 -3 -5 z" />
+                          </svg>
+                          {item.spCost} SP
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </aside>
       </div>
 
