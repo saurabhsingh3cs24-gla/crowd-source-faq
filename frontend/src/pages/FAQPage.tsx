@@ -44,7 +44,7 @@ function CategoryPills({ categories, activeCategory, onSelect }: CategoryPillsPr
 
   return (
     <div className="w-full">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-6">
         <p className="text-xs font-semibold text-ink-faint uppercase tracking-wide">
           Browse categories
         </p>
@@ -434,8 +434,8 @@ export default function FAQPage() {
       <FAQDoodles />
       <Navbar />
 
-      <main className="max-w-[1200px] mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-10 relative z-10">
-        <div className="mb-6 sm:mb-8 text-center">
+      <main className="max-w-[1200px] mx-auto px-4 sm:px-6 pt-[88px] pb-10 relative z-10">
+        <div className="mb-6 text-center">
           <h1 className="text-2xl sm:text-3xl font-serif text-ink tracking-tight">
             Intern FAQs — <span className="text-accent">solved</span>
           </h1>
@@ -455,7 +455,7 @@ export default function FAQPage() {
           />
         )}
 
-        <section className="relative mb-10 sm:mb-12">
+        <section className="relative mb-6">
           <div className={`relative max-w-3xl mx-auto ${showDropdown ? 'z-40' : 'z-20'}`}>
             <SearchBar
               ref={searchBarRef}
@@ -481,7 +481,7 @@ export default function FAQPage() {
             )}
           </div>
 
-          <div className={`mt-5 sm:mt-6 transition-all duration-300 ${
+          <div className={`mt-10 transition-all duration-300 ${
             showDropdown ? 'opacity-70 translate-y-1' : 'opacity-100'
           }`}>
             <CategoryPills

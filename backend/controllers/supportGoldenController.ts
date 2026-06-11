@@ -424,13 +424,36 @@ export async function getGoldenQueue(req: Request, res: Response): Promise<void>
   const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? '10')) || 10));
 
   try {
-    // v1.65.1 — Sort by spCost desc (biggest spenders at the top),
-    // tiebroken by createdAt desc (newest of the equal-SP group
-    // wins). Backed by the { isGolden: 1, spCost: -1, createdAt: -1 }
-    // index added on SupportRequest so this stays O(log n) even
-    // when the Golden ticket pool grows.
-    const docs = await SupportRequest.find({ isGolden: true })
-      .sort({ spCost: -1, createdAt: -1 })
+    // 1. Determine if the user has an active Golden Ticket and what their position is
+    const myActiveTicket = await SupportRequest.findOne({
+      isGolden: true,
+      status: { $in: ['Pending', 'In Review', 'open'] },
+      userId: userId
+    }).select('spCost createdAt').lean();
+
+    let myQueuePosition: number | undefined;
+    let ticketsAhead: number | undefined;
+    let mySpCost: number | undefined;
+
+    if (myActiveTicket) {
+      ticketsAhead = await SupportRequest.countDocuments({
+        isGolden: true,
+        status: { $in: ['Pending', 'In Review', 'open'] },
+        $or: [
+          { spCost: { $gt: myActiveTicket.spCost } },
+          { spCost: myActiveTicket.spCost, createdAt: { $lt: myActiveTicket.createdAt } }
+        ]
+      });
+      myQueuePosition = ticketsAhead + 1;
+      mySpCost = myActiveTicket.spCost;
+    }
+
+    // 2. Fetch the top `limit` pending Golden Tickets
+    const docs = await SupportRequest.find({ 
+      isGolden: true,
+      status: { $in: ['Pending', 'In Review', 'open'] }
+    })
+      .sort({ spCost: -1, createdAt: 1 })
       .limit(limit)
       .select('userId userName title details spCost status createdAt')
       .lean();
@@ -439,15 +462,9 @@ export async function getGoldenQueue(req: Request, res: Response): Promise<void>
       .filter((d) => isAdmin || d.userId.toString() !== userId.toString())
       .map((d) => {
         const isOwn = d.userId.toString() === userId.toString();
-        // Even admins see redacted name for non-own tickets, since
-        // the Escalation Queue card is meant to be anonymous-by-
-        // default; admins can click into the full ticket from the
-        // admin inbox (where the real name is always available).
         return {
           _id: d._id,
           isOwn,
-          // Show the requester as ANONYMOUS except to admins viewing
-          // their own ticket.
           userName: isOwn ? d.userName : (isAdmin ? d.userName : 'ANONYMOUS'),
           title: d.title,
           details: d.details,
@@ -457,7 +474,7 @@ export async function getGoldenQueue(req: Request, res: Response): Promise<void>
         };
       });
 
-    res.json({ items });
+    res.json({ items, myQueuePosition, ticketsAhead, mySpCost });
   } catch (err) {
     logger.error(`[supportGolden] getGoldenQueue failed: ${(err as Error).message}`);
     res.status(500).json({ message: 'Failed to load Golden queue.' });

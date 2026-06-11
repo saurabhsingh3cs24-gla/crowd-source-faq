@@ -28,7 +28,7 @@ export function ExploreHero({
 }: ExploreHeroProps): React.ReactElement {
   return (
     <section
-      className="relative pt-8 sm:pt-12 pb-6 sm:pb-10 text-center"
+      className="relative pt-8 sm:pt-12 pb-12 text-center"
       aria-label="Page header"
     >
       <HomeDoodles />
@@ -44,14 +44,14 @@ export function ExploreHero({
       <p className="text-[11px] uppercase tracking-[0.18em] font-semibold text-accent relative z-10">
         {batchName}
       </p>
-      <h1 className="font-serif text-[1.75rem] sm:text-4xl md:text-5xl lg:text-[3.2rem] leading-[1.15] tracking-tight text-ink mb-3 mt-1.5 relative z-10">
+      <h1 className="font-serif text-[1.75rem] sm:text-4xl md:text-5xl lg:text-[3.2rem] leading-[1.15] tracking-tight text-ink mb-6 mt-1.5 relative z-10">
         Ask. Discover. Get{' '}
         <span className="doodle-underline font-serif" style={{ fontWeight: 700 }}>Solved.</span>
         <svg className="inline-block ml-2 align-middle" width="24" height="18" viewBox="0 0 24 18" style={{ opacity: 0.18 }}>
           <path d="M2 12 Q6 4 12 9 Q18 14 22 6" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
         </svg>
       </h1>
-      <p className="text-sm sm:text-base text-ink-soft mb-6 sm:mb-8 max-w-lg leading-relaxed mx-auto px-2 relative z-10">
+      <p className="text-sm sm:text-base text-ink-soft max-w-lg leading-relaxed mx-auto px-2 relative z-10">
         Search your doubt or explore solved questions from the community.
       </p>
 
@@ -62,7 +62,7 @@ export function ExploreHero({
         </p>
       )}
 
-      {children && <div className="mt-6 sm:mt-8 max-w-3xl mx-auto px-2">{children}</div>}
+      {children && <div className="mt-10 max-w-3xl mx-auto px-2">{children}</div>}
 
       {categories && categories.length > 0 && (
         <nav

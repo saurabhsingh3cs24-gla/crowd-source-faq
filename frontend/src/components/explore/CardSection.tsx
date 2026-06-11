@@ -21,16 +21,18 @@ export function CardSection({
 }: CardSectionProps): React.ReactElement {
   return (
     <section
-      className={`bg-card rounded-2xl border border-border p-5 ${className}`}
+      className={`bg-card rounded-2xl border border-border p-6 flex flex-col h-full ${className}`}
     >
-      <header className="flex items-center justify-between mb-4">
+      <header className="flex items-center justify-between mb-6 shrink-0">
         <div className="flex items-center gap-2 text-accent">
           {icon}
           <h2 className="font-serif text-lg text-ink leading-none">{title}</h2>
         </div>
         {rightAction}
       </header>
-      {children}
+      <div className="flex-1 flex flex-col">
+        {children}
+      </div>
     </section>
   );
 }
