@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { type Request, type Response, type NextFunction } from 'express';
 import User, { type IUser, type UserRole } from '../models/User.js';
 import RevokedToken from '../models/RevokedToken.js';
+import { securityLog } from '../utils/http/logger.js';
 
 interface VerifiedToken {
   id: string;
@@ -60,6 +61,12 @@ export async function verifyAndLoadUser(
   }
 
   if (user.isBanned) {
+    // v1.67 — Banned users hitting protected endpoints is a
+    // security event. ALERT-level so it hits Discord.
+    securityLog.alert('banned user blocked at middleware', {
+      userId: user._id.toString(),
+      email: user.email,
+    });
     res.status(403).json({ message: 'Account is banned.' });
     return null;
   }

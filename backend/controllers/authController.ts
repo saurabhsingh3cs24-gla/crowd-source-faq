@@ -7,7 +7,7 @@ import Notification from '../models/Notification.js';
 import RevokedToken from '../models/RevokedToken.js';
 import { registerSchema, loginSchema, changePasswordSchema } from '../utils/auth/validation.js';
 import { sanitizeHtml } from '../utils/http/sanitize.js';
-import { logger } from '../utils/http/logger.js';
+import { logger, authLog, securityLog } from '../utils/http/logger.js';
 
 // Helper: Generates a signed JWT using the user's ID, embedding a unique
 // `jti` so the token can be server-side revoked via RevokedToken.
@@ -51,6 +51,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
+      authLog.warn('register validation failed', { errors: parsed.error.issues.length });
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
@@ -58,12 +59,15 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     const userExists = await User.findOne({ email });
     if (userExists) {
+      authLog.warn('register duplicate email', { email });
       res.status(400).json({ message: 'User with this email already exists.' });
       return;
     }
 
     const user = await User.create({ name, email, password });
     const { token } = generateToken(user._id.toString());
+
+    authLog.info('register ok', { userId: user._id.toString(), email });
 
     const userResponse: UserResponse = {
       id: user._id.toString(),
@@ -75,6 +79,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json({ token, user: userResponse });
   } catch (error) {
+    authLog.error('register failed', { error: (error as Error).message });
     res.status(500).json({ message: 'Server error', /* error: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined */ });
   }
 };
@@ -84,24 +89,51 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) {
+      authLog.warn('login validation failed', { errors: parsed.error.issues.length });
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
     const { email, password } = parsed.data;
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? req.ip;
 
     const user = await User.findOne({ email }).select('+password') as IUser | null;
     if (!user) {
+      // Don't reveal whether the email exists. Log at WARN so
+      // brute-force attempts surface in the scrollback.
+      authLog.warn('login failed (no user)', { email, ip });
       res.status(401).json({ message: 'Invalid email or password.' });
       return;
     }
 
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
+      authLog.warn('login failed (bad password)', { email, userId: user._id.toString(), ip });
       res.status(401).json({ message: 'Invalid email or password.' });
       return;
     }
 
+    // v1.67 — Banned / suspended / soft-banned users can't log in.
+    // securityLog.alert() forwards to Discord.
+    if (user.isBanned) {
+      securityLog.alert('banned login attempt', { userId: user._id.toString(), email, ip });
+      res.status(403).json({ message: 'Account is banned.' });
+      return;
+    }
+    if (user.goldenBannedUntil && user.goldenBannedUntil > new Date()) {
+      authLog.warn('login while golden-banned (allowed — can still browse)', {
+        userId: user._id.toString(),
+        email,
+        ip,
+        bannedUntil: user.goldenBannedUntil.toISOString(),
+      });
+      // Note: golden ban is a soft ban (browse-allowed, create-blocked).
+      // We let them log in; the per-endpoint ban gate stops them from
+      // creating content until goldenBannedUntil passes.
+    }
+
     const { token } = generateToken(user._id.toString());
+
+    authLog.info('login ok', { userId: user._id.toString(), email, ip });
 
     const userResponse: UserResponse = {
       id: user._id.toString(),
@@ -113,6 +145,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     res.json({ token, user: userResponse });
   } catch (error) {
+    authLog.error('login failed', { error: (error as Error).message });
     res.status(500).json({ message: 'Server error', /* error: process.env.NODE_ENV === 'development' ? (error as Error).message : undefined */ });
   }
 };
@@ -435,6 +468,7 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
     // its decoded payload to req.auth. We just need the jti + exp from there.
     const auth = (req as Request & { auth?: { jti?: string; exp?: number } }).auth;
     if (!auth?.jti || !auth?.exp) {
+      authLog.warn('logout: token has no jti', { userId: req.user._id.toString() });
       res.status(400).json({ message: 'Token has no jti — was it issued before the revocation system was added?' });
       return;
     }
@@ -447,9 +481,10 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
       { upsert: true }
     );
 
+    authLog.info('logout ok', { userId: req.user._id.toString() });
     res.json({ message: 'Logged out.' });
   } catch (error) {
-    logger.error('Logout failed', { error: (error as Error).message });
+    authLog.error('logout failed', { userId: req.user._id.toString(), error: (error as Error).message });
     res.status(500).json({ message: 'Logout failed.' });
   }
 };
