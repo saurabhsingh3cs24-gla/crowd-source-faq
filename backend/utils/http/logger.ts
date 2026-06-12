@@ -56,6 +56,8 @@ const C = {
   boldRed:(s: string) => `\x1b[1m\x1b[31m${s}\x1b[0m`,
 };
 
+// v1.68 — L1 sweep: subsystem-specific loggers for the
+// remaining user-facing domains.
 const CATEGORY_COLORS: Record<string, (s: string) => string> = {
   auth:       C.cyan,
   admin:      C.magenta,
@@ -67,6 +69,8 @@ const CATEGORY_COLORS: Record<string, (s: string) => string> = {
   startup:    C.bold,
   security:   C.boldRed,
   audit:      C.boldRed,
+  community:  C.green,
+  support:    C.yellow,
 };
 
 function coloredCategory(category: string): string {
@@ -147,6 +151,13 @@ export const httpLog     = createLogger('http');
 export const startupLog  = createLogger('startup');
 export const shutdownLog = createLogger('shutdown');
 export const securityLog = createLogger('security');
+// v1.68 — L1 sweep: subsystem-specific loggers for the remaining
+// user-facing domains. communityLog covers post + comment +
+// public FAQ reads. supportLog covers the user-facing support
+// ticket + golden-ticket flow. queueLog (already present)
+// covers the BullMQ job worker.
+export const communityLog = createLogger('community');
+export const supportLog   = createLogger('support');
 
 // ─── Generic logger (for one-off use; consider createLogger instead) ────────
 
