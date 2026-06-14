@@ -49,6 +49,8 @@ const AdminFAQAudit = lazy(() => import('./admin/pages/AdminFAQAudit'));
 const AdminBatches = lazy(() => import('./admin/pages/AdminBatches'));
 const AdminProgramSettingsPage = lazy(() => import('./admin/pages/AdminProgramSettingsPage'));
 const AdminCoursesPage = lazy(() => import('./admin/pages/AdminCoursesPage'));
+const AdminProgramDashboard = lazy(() => import('./admin/pages/AdminProgramDashboard'));
+const AdminProgramDetail = lazy(() => import('./admin/pages/AdminProgramDetail'));
 const AdminSupportInbox = lazy(() => import('./admin/pages/AdminSupportInbox'));
 const AdminSupportTicket = lazy(() => import('./admin/pages/AdminSupportTicket'));
 const AdminSupportGuidance = lazy(() => import('./admin/pages/AdminSupportGuidance'));
@@ -207,6 +209,12 @@ function AppRoutes() {
             theme, hero copy, and which sections show on the
             public program page. */}
         <Route path="/admin/programs/:id/settings" element={<AdminRoute><AdminLayout><AdminProgramSettingsPage /></AdminLayout></AdminRoute>} />
+        {/* v1.69 — Phase 10: admin program dashboard (list) and
+            detail (tabbed per-program view). Each tab in the
+            detail view is a thin wrapper around the existing
+            per-program admin endpoints added in Phases 4-9. */}
+        <Route path="/admin/programs" element={<AdminRoute><AdminLayout><AdminProgramDashboard /></AdminLayout></AdminRoute>} />
+        <Route path="/admin/programs/:id" element={<AdminRoute><AdminLayout><AdminProgramDetail /></AdminLayout></AdminRoute>} />
 
         {/* Session Support admin (not gated by feature flag) */}
         <Route path="/admin/support" element={<AdminRoute><AdminLayout><AdminSupportInbox /></AdminLayout></AdminRoute>} />
