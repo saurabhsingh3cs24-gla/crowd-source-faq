@@ -41,6 +41,8 @@ import adminWelcomeRoutes from './routes/adminWelcomeRoutes.js';
 import adminMentorRoutes from './routes/adminMentorRoutes.js';
 import adminTimelineRoutes from './routes/adminTimelineRoutes.js';
 import { adminRouter as appSettingsAdminRouter, publicRouter as appSettingsPublicRouter } from './routes/appSettings.js';
+// v1.70 — Controlled-registration admin endpoints (toggle + token regenerate).
+import registrationControlRoutes from './routes/registrationControl.js';
 import adminCategoryClusterRoutes from './routes/adminCategoryCluster.js';
 import publicCategoryClusterRoutes from './routes/publicCategoryCluster.js';
 import healthRoutes from './routes/health.js';
@@ -237,6 +239,11 @@ app.use('/api/admin/timeline-steps', adminTimelineRoutes);
 app.use('/api/admin/settings',  appSettingsAdminRouter);
 app.use('/api/public/settings', appSettingsPublicRouter);
 
+// v1.70 — Controlled registration admin endpoints (toggle + token regenerate).
+// Mounted separately from appSettings because the surface is small
+// and the endpoints have a different RBAC story (admin-only, not moderator).
+app.use('/api/admin/registration-config', registrationControlRoutes);
+
 // 6. Health Check Endpoint
 // Useful for deployment platforms (like Vercel/AWS) to verify the server is alive
 app.get('/api/health', async (req: Request, res: Response) => {
@@ -407,6 +414,20 @@ if (process.env.NODE_ENV !== 'production') {
       await migrateZoomSettingsToSessions();
     } catch (e) {
       startupLog.error('startup DB connect failed', { error: (e as Error).message });
+    }
+
+    // v1.70 — Lazy-init the RegistrationConfig singleton. On first
+    // boot this creates the doc with a fresh token + logs the
+    // plaintext to stderr so the operator can copy it. Subsequent
+    // boots are a no-op (findById hits cache after first call).
+    // Best-effort: a DB failure here shouldn't stop the server,
+    // since the gate helper also calls ensureRegistrationConfig
+    // on every /register request and on every admin GET.
+    try {
+      const { ensureRegistrationConfig } = await import('./models/RegistrationConfig.js');
+      await ensureRegistrationConfig();
+    } catch (e) {
+      startupLog.warn(`[registrationConfig] ensure failed at startup: ${(e as Error).message}`);
     }
 
     startEscalationScheduler();

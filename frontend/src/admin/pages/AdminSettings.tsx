@@ -2,6 +2,8 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { motion } from 'framer-motion';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 import adminApi from '../utils/adminApi';
+// v1.70 — Controlled-registration admin UI (toggle + invite link).
+import RegistrationControlCard from '../components/settings/RegistrationControlCard';
 
 interface ToastState { msg: string; type: 'success' | 'error'; }
 
@@ -100,6 +102,11 @@ export default function AdminSettings() {
           the admin's own /admin/settings page (not on /admin/features)
           because they're runtime tunables, not feature toggles. */}
       <GoldenTicketSettingsCard onSaved={showToast} />
+
+      {/* v1.70 — Controlled-registration: admin-only toggle + invite
+          link + regenerate button. The card manages its own state and
+          calls /api/admin/registration-config directly. */}
+      <RegistrationControlCard onSaved={showToast} />
     </div>
   );
 }

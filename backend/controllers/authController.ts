@@ -53,6 +53,11 @@ interface UserResponse {
 }
 
 // POST /api/auth/register
+// v1.70 — The controlled-registration gate is enforced by the
+// `registrationGate` middleware mounted in routes/auth.ts, BEFORE
+// validateBody. By the time this handler runs, the request has
+// either been 403'd (closed/no-token/bad-token) or it's a real
+// registration attempt. We just validate + create.
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = registerSchema.safeParse(req.body);

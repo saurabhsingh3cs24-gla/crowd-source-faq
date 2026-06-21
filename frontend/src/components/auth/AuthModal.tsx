@@ -21,7 +21,7 @@ type Tab = 'signin' | 'register';
  * response don't render on top of the fading backdrop.
  */
 export default function AuthModal() {
-  const { isOpen, initialTab, closeModal, prompt } = useAuthModal();
+  const { isOpen, initialTab, closeModal, prompt, inviteToken } = useAuthModal();
   const { login, register } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -174,7 +174,11 @@ export default function AuthModal() {
       await register(
         registerForm.name.trim(),
         registerForm.email.trim(),
-        registerForm.password
+        registerForm.password,
+        // v1.70 — pass the invite token if the user arrived via /?token=...
+        // Captured by AuthModalProvider on mount. Backend validates; if
+        // missing/invalid the gate returns 403 and the error message below.
+        inviteToken ?? undefined
       );
       // Same as handleLoginSubmit — set closing=true + closeModal()
       // so the provider's effect sees the isOpen transition and fires the

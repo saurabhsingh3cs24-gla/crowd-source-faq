@@ -30,7 +30,12 @@ export interface User {
 export interface AuthContextValue {
   user: User | null;
   login: (email: string, password: string) => Promise<User>;
-  register: (name: string, email: string, password: string) => Promise<User>;
+  // v1.70 — inviteToken is required when the controlled-registration
+  // gate is enabled. Backend will 403 with "missing_token" or
+  // "invalid_token" if it doesn't match the active admin-issued token.
+  // The token arrives from `?token=...` in the URL when the user clicks
+  // an admin-shared invite link.
+  register: (name: string, email: string, password: string, inviteToken?: string) => Promise<User>;
   logout: () => void;
   loading: boolean;
   isAuthenticated: boolean;
@@ -98,8 +103,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return loggedInUser;
   };
 
-  const register = async (name: string, email: string, password: string): Promise<User> => {
-    const res = await api.post('/auth/register', { name, email, password });
+  const register = async (name: string, email: string, password: string, inviteToken?: string): Promise<User> => {
+    // v1.70 — append `?token=` when the caller has one (typically because
+    // they arrived via /?token=xyz invite link). Backend gate rejects with
+    // 403 if the gate is closed or the token doesn't match.
+    const url = inviteToken ? `/auth/register?token=${encodeURIComponent(inviteToken)}` : '/auth/register';
+    const res = await api.post(url, { name, email, password });
     const { token, user: registeredUser } = res.data as { token: string; user: User };
     localStorage.setItem('yaksha_token', token);
     localStorage.setItem('yaksha_user', JSON.stringify(registeredUser));

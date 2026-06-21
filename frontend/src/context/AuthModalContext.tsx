@@ -26,6 +26,11 @@ interface AuthModalContextValue {
   // Optional text shown above the form (e.g. "Sign in to ask a question").
   prompt: string;
   setPrompt: (text: string) => void;
+  // v1.70 — Invite token captured from `?token=...` in the URL when the
+  // user lands on the invite link. Null when no token was supplied.
+  // The AuthModal reads this on register submit and passes it to
+  // `useAuth().register(...)` so the backend gate can validate it.
+  inviteToken: string | null;
 }
 
 const AuthModalContext = createContext<AuthModalContextValue | null>(null);
@@ -41,6 +46,28 @@ export function AuthModalProvider({ children, isAuthenticated }: ProviderProps) 
   const [initialTab, setInitialTab] = useState<'signin' | 'register'>('signin');
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [prompt, setPrompt] = useState('');
+  // v1.70 — Capture `?token=...` from the URL on mount. When present,
+  // auto-open the modal in the register tab so the user lands directly
+  // on the form (not on a sign-in screen they'll have to switch out of).
+  // We also strip the token from the URL after capture so a refresh
+  // doesn't re-trigger the modal — the token is now in component state.
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      setInviteToken(token);
+      setInitialTab('register');
+      setIsOpen(true);
+      // Strip ?token= from the URL to avoid leaving the active token
+      // visible in browser history, address bar, and referer headers.
+      // Use replaceState so the back button doesn't re-trigger.
+      const cleaned = window.location.pathname + window.location.hash;
+      window.history.replaceState(null, '', cleaned);
+    }
+  }, []);
 
   const openModal = useCallback((tab: 'signin' | 'register' = 'signin') => {
     setInitialTab(tab);
@@ -107,7 +134,8 @@ export function AuthModalProvider({ children, isAuthenticated }: ProviderProps) 
     setPendingAction,
     prompt,
     setPrompt,
-  }), [isOpen, initialTab, openModal, closeModal, prompt]);
+    inviteToken,
+  }), [isOpen, initialTab, openModal, closeModal, prompt, inviteToken]);
 
   return <AuthModalContext.Provider value={value}>{children}</AuthModalContext.Provider>;
 }
