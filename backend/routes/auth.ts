@@ -3,11 +3,14 @@ import { login, register, getMe, getAllUsers, updateUserRole, deleteUser, update
 import { protect, authorize } from '../middleware/auth.js';
 import { loginLimiter, registerLimiter, passwordChangeLimiter } from '../utils/auth/rateLimit.js';
 import { validateBody, registerSchema, loginSchema, updateProfileSchema, changePasswordSchema } from '../utils/auth/validation.js';
+// v1.70 — Controlled-registration gate. Mounted BEFORE validateBody so
+// closed/invalid-token requests 403 before the Zod schema runs.
+import { registrationGate } from '../utils/auth/registrationGate.js';
 
 const router = Router();
 
-// POST /api/auth/register (Public) — rate-limited, validated
-router.post('/register', registerLimiter, validateBody(registerSchema), register);
+// POST /api/auth/register (Public) — rate-limited, gated, validated
+router.post('/register', registerLimiter, registrationGate, validateBody(registerSchema), register);
 
 // POST /api/auth/login (Public) — rate-limited, validated
 router.post('/login', loginLimiter, validateBody(loginSchema), login);
