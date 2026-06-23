@@ -185,18 +185,16 @@ wait_for_backend() {
   log "waiting for backend to be ready..."
   while [ $waited -lt $max_wait ]; do
     local status
-    status=$(curl -sf --max-time 2 http://localhost:6767/csfaq/api/health 2>/dev/null \
-      | grep -o '"db":"[^"]*"' 2>/dev/null | cut -d'"' -f4 \
-      || echo "waiting")
-    if [ "$status" = "connected" ]; then
-      ok "MongoDB connected"
+    status=$(curl -sf -o /dev/null -w "%{http_code}" --max-time 2 http://localhost:6767/csfaq/api/health || echo "000")
+    if [ "$status" = "200" ]; then
+      ok "backend ready"
       return 0
     fi
     sleep 2
     waited=$((waited + 2))
     echo -n "."
   done
-  warn "backend DB not connected after ${max_wait}s — continuing anyway"
+  warn "backend not ready after ${max_wait}s — continuing anyway"
 }
 
 # ── Start backend ──────────────────────────────────────────────────────────────
@@ -219,7 +217,7 @@ start_backend() {
   echo "$SESSION_LOG" > /tmp/yaksha-session-log
 
   # Run tsx — prefix each line with [backend] dim tag for greppable scrollback.
-  ../node_modules/.bin/tsx watch src/server.ts 2>&1 | \
+  ../../node_modules/.bin/tsx watch src/server.ts 2>&1 | \
     sed -u "s/^\([^[]]*\)/${F_DIM}[backend]${F_RESET} \1/" | \
     tee "$SESSION_LOG" &
   BACKEND_PID=$!

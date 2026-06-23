@@ -17,8 +17,6 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/csfaq/api': { target: 'http://localhost:6767', changeOrigin: true },
-      '/csfaq/assets': { target: 'http://localhost:6767', changeOrigin: true },
-      '/csfaq/favicon.ico': { target: 'http://localhost:6767', changeOrigin: true },
     },
   },
   optimizeDeps: {
