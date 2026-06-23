@@ -275,6 +275,16 @@ export const ConfigSchema = z.object({
     allowedFormats: z.array(z.string()).default([]),
     maxFileSizeMb: z.number().default(10),
   }),
+  // v1.71 — Image uploads now go to GCS instead of Cloudinary.
+  // The Cloudinary block above stays until all DB rows are migrated
+  // and the legacy code is removed (see Cloudinary-to-GCS migration plan).
+  gcs: z.object({
+    bucket: z.string().default(''),
+    publicHost: z.string().default(''),
+    allowedSubfolders: z.array(z.string()).default(['avatar', 'posts']),
+    maxFileSizeMb: z.number().default(8),
+    signedUrlTtlSeconds: z.number().default(900),
+  }),
   programs: z.object({
     maxBatchesPerProgram: z.number().default(50),
     maxCoursesPerBatch: z.number().default(20),

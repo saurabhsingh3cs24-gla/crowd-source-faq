@@ -1,5 +1,5 @@
 import { logger } from '../utils/http/logger.js';
-import { getCloudinaryConfig } from '../integrations/cloudinary/cloudinary.js';
+import { getGcsConfig } from '../integrations/gcs/gcs.js';
 
 export function validateEnv(): void {
   const errors: string[] = [];
@@ -26,6 +26,13 @@ export function validateEnv(): void {
   }
   if (!process.env.OAUTH_STATE_SECRET) {
     logger.warn('[validateEnv] OAUTH_STATE_SECRET not set — falling back to JWT_SECRET for OAuth state HMAC. Add a dedicated key to enable independent rotation.');
+  }
+  if (!process.env.DISCORD_ADMIN_PASSPHRASE) {
+    if (process.env.NODE_ENV === 'production') {
+      errors.push('DISCORD_ADMIN_PASSPHRASE is required in production');
+    } else {
+      logger.warn('[validateEnv] DISCORD_ADMIN_PASSPHRASE not set — falling back to "adminpassphrase" as default.');
+    }
   }
 
   // Optional: PORT
@@ -69,10 +76,19 @@ export function validateEnv(): void {
     errors.push('ZOOM_WEBHOOK_SECRET_TOKEN is required in non-development environments');
   }
 
+  // v1.71 — GCS image storage. Soft-check during the Cloudinary→GCS
+  // migration: log a warning if missing but don't block boot, because
+  // uploads signed before the cutover still hit Cloudinary. After Phase 4
+  // (Cloudinary decommissioned) we'll convert this to a hard error.
   try {
-    getCloudinaryConfig();
-  } catch (e: any) {
-    errors.push(e.message);
+    getGcsConfig();
+  } catch (e) {
+    const msg = (e as Error).message;
+    if (process.env.NODE_ENV === 'production') {
+      errors.push(msg);
+    } else {
+      logger.warn(`[validateEnv] ${msg} — image uploads will 503 until configured.`);
+    }
   }
 
   if (errors.length > 0) {
