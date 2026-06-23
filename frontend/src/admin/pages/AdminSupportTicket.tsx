@@ -127,7 +127,7 @@ function AdminTicketInner(): React.ReactElement {
     const note = window.prompt('Optional internal note for the audit trail:', 'Promoted to Golden from ticket page') || '';
     setConvertSending(true);
     try {
-      await adminApi.post(`/api/support/requests/${request._id}/convert-to-golden`, { spCost, note });
+      await adminApi.post(`/csfaq/api/support/requests/${request._id}/convert-to-golden`, { spCost, note });
       await load();
       showToast(`Promoted to Golden${spCost > 0 ? ` (${spCost} SP charged)` : ' (no charge)'}.`);
     } catch (err) {

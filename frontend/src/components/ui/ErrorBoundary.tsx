@@ -76,7 +76,7 @@ function reportError(
   // fetch can fail silently in old browsers / blocked networks;
   // we don't await and we don't throw.
   try {
-    void fetch('/api/log', {
+    void fetch('/csfaq/api/log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ level: 'ERROR', message: `[frontend]: unhandled error in ${sectionName}`, meta }),

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  base: '/csfaq/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -15,10 +16,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://localhost:6767',
-        changeOrigin: true,
-      },
+      '/csfaq/api': { target: 'http://localhost:6767', changeOrigin: true },
+      '/csfaq/assets': { target: 'http://localhost:6767', changeOrigin: true },
+      '/csfaq/favicon.ico': { target: 'http://localhost:6767', changeOrigin: true },
     },
   },
   optimizeDeps: {

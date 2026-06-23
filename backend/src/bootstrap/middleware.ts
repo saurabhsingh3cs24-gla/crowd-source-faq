@@ -34,25 +34,9 @@ export function registerMiddleware(app: Express, config: any): void {
   // 4. Request logging
   app.use(requestLogger);
 
-  // 5. Dynamic CORS Configuration
-  const allowedOrigins = [...config.cors.allowedOrigins];
-  if (process.env.CLIENT_URL) allowedOrigins.push(process.env.CLIENT_URL);
-
-  app.use(cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-
-      const isVercelPreview = config.cors.allowVercelPreviews && config.server.env !== 'production' && origin.endsWith('.vercel.app');
-      const isLocalhost = config.cors.allowLocalhostInDev && config.server.env !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-      
-      if (allowedOrigins.indexOf(origin) !== -1 || isVercelPreview || isLocalhost) {
-        callback(null, true);
-      } else {
-        callback(null, false);
-      }
-    },
-    credentials: config.cors.credentials,
-  }));
+  // Single-container deployment — same-origin, no CORS needed.
+  // (Kept as a passthrough in case the admin SPA is embedded cross-origin in future.)
+  app.use(cors({ origin: true, credentials: true }));
 
   // 6. Security headers via Helmet
   app.use(helmet({
@@ -83,5 +67,5 @@ export function registerMiddleware(app: Express, config: any): void {
   app.use('/uploads', express.static('uploads'));
 
   // Frontend log endpoint
-  app.post('/api/log', ingestFrontendLog);
+  app.post('/csfaq/api/log', ingestFrontendLog);
 }

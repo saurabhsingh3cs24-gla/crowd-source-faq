@@ -1,9 +1,36 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Yaksha FAQ Portal — Backend Dockerfile
-#  Multi-stage: dependency install → lean runtime with Infisical CLI
+#  Yaksha FAQ Portal — Backend & Frontend Unified Dockerfile
+#  Multi-stage: build frontend → dependency install → lean runtime with Infisical CLI
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ── Stage 1: Install dependencies ─────────────────────────────────
+# ── Stage 1: Build the Vite SPA ──────────────────────────────────────────────
+FROM node:22-bookworm-slim AS frontend-build
+
+RUN npm install -g pnpm@9
+
+WORKDIR /app
+
+# Copy root workspace configurations
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json turbo.json ./
+
+# Copy package configurations
+COPY packages/config/package.json ./packages/config/
+COPY packages/types/package.json ./packages/types/
+COPY packages/utils/package.json ./packages/utils/
+COPY packages/validation/package.json ./packages/validation/
+COPY frontend/package.json ./frontend/
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code
+COPY packages/ ./packages/
+COPY frontend/ ./frontend/
+
+# Build frontend static bundle
+RUN pnpm build --filter=yaksha-faq-frontend
+
+# ── Stage 2: Install backend dependencies ─────────────────────────────────
 FROM node:22-bookworm-slim AS deps
 
 # Install system dependencies needed to build native node modules
@@ -31,7 +58,7 @@ COPY backend/package.json ./backend/
 # Install dependencies (only configs copied so far for caching)
 RUN pnpm install --frozen-lockfile
 
-# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+# ── Stage 3: Runtime ─────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runtime
 
 RUN npm install -g pnpm@9
@@ -63,6 +90,9 @@ COPY --from=deps /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml 
 COPY packages/ ./packages/
 COPY backend/ ./backend/
 
+# Copy built frontend static assets from frontend-build stage
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+
 # Re-run install to make sure all symlinks (workspaces) are properly linked
 RUN pnpm install --frozen-lockfile --offline
 
@@ -75,9 +105,9 @@ WORKDIR /app/backend
 # Expose the backend API port
 EXPOSE 6767
 
-# Healthcheck — hit the /api/health endpoint
+# Healthcheck — hit the /csfaq/api/health endpoint
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=15s \
-    CMD curl -sf http://localhost:6767/api/health || exit 1
+    CMD curl -sf http://localhost:6767/csfaq/api/health || exit 1
 
 # Run the server using tsx (TypeScript executor from node_modules)
 CMD ["node", "--import", "tsx", "src/server.ts"]

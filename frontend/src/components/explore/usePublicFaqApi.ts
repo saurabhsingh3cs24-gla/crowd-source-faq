@@ -135,7 +135,7 @@ export function trackPublicView(faqId: string, sessionId: string, batchId: strin
     // Use sendBeacon if available — non-blocking and survives unload.
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       const blob = new Blob([payload], { type: 'application/json' });
-      navigator.sendBeacon('/api/public/track-view', blob);
+      navigator.sendBeacon('/csfaq/api/public/track-view', blob);
     } else {
       void api.post<TrackViewResponse>('/public/track-view', { faqId, sessionId, batchId }).catch(() => {});
     }
@@ -152,7 +152,7 @@ export function trackPublicReading(
     const body = JSON.stringify({ faqId, sessionId, batchId, ...payload });
     if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
       const blob = new Blob([body], { type: 'application/json' });
-      navigator.sendBeacon('/api/public/track-reading', blob);
+      navigator.sendBeacon('/csfaq/api/public/track-reading', blob);
     } else {
       void api
         .post<TrackReadingResponse>('/public/track-reading', { faqId, sessionId, batchId, ...payload })

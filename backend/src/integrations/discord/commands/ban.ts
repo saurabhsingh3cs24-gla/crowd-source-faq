@@ -63,7 +63,7 @@ export async function executeBan(
 
   try {
     const res = await fetch(
-      buildBotApiUrl(config, '/api/moderation/ban', batchId),
+      buildBotApiUrl(config, '/csfaq/api/moderation/ban', batchId),
       {
         method: 'POST',
         headers: { 'X-Internal-Api-Key': config.internalApiKey ?? '', 'Content-Type': 'application/json', ...botApiHeaders(config, batchId) },

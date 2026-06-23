@@ -10,7 +10,7 @@ import ErrorBoundary from './components/ui/ErrorBoundary';
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/csfaq">
       <AuthProvider>
         <FeatureFlagProvider>
           <BatchProvider>

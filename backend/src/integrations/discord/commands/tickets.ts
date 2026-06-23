@@ -83,7 +83,7 @@ export async function executeTickets(
 
   let tickets: SupportTicket[] = [];
   try {
-    const basePath = `/api/support/requests?status=${encodeURIComponent(status)}&limit=${limit}`;
+    const basePath = `/csfaq/api/support/requests?status=${encodeURIComponent(status)}&limit=${limit}`;
     const res = await fetch(
       buildBotApiUrl(config, basePath, batchId),
       { headers: { 'X-Internal-Api-Key': config.internalApiKey ?? '', ...botApiHeaders(config, batchId) } }

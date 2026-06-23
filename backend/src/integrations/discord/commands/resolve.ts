@@ -66,7 +66,7 @@ export async function executeResolve(
 
   try {
     const res = await fetch(
-      buildBotApiUrl(config, `/api/support/requests/${encodeURIComponent(ticketId)}/status`, batchId),
+      buildBotApiUrl(config, `/csfaq/api/support/requests/${encodeURIComponent(ticketId)}/status`, batchId),
       {
         method: 'PATCH',
         headers: { 'X-Internal-Api-Key': config.internalApiKey ?? '', 'Content-Type': 'application/json', ...botApiHeaders(config, batchId) },

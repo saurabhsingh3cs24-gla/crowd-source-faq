@@ -58,7 +58,7 @@ export const clearApiCache = () => {
 };
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL || '/csfaq/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -131,7 +131,7 @@ function sendToFileLog(level: string, message: string, meta?: Record<string, unk
     : '';
   console.info(`${prefix} [frontend] ${message} ${short}`);
   // Fire-and-forget to backend file log
-  fetch(`${import.meta.env.VITE_API_URL || '/api'}/log`, {
+  fetch(`${import.meta.env.VITE_API_URL || '/csfaq/api'}/log`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ level, message, meta }),

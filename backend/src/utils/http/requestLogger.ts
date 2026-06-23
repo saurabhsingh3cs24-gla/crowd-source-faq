@@ -52,7 +52,7 @@ function sanitizeBody(body: Record<string, unknown> | undefined): Record<string,
 
 export function requestLogger(req: Request, res: Response, next: NextFunction): void {
   // Skip logging for the log ingest endpoint itself — it's noise
-  if (req.path === '/api/log') { next(); return; }
+  if (req.path === '/csfaq/api/log') { next(); return; }
 
   const startMs = Date.now();
   const requestId = (req as Request & { id?: string }).id || '-';

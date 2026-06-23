@@ -26,7 +26,7 @@ const ZOOM_API_BASE    = 'https://api.zoom.us/v2';
 // Only validate when first called, after dotenv has loaded all env files
 function getClientId()     { const v = process.env.ZOOM_CLIENT_ID;     if (!v) throw new Error('Missing ZOOM_CLIENT_ID env var — add it to backend/.env.local');     return v; }
 function getClientSecret() { const v = process.env.ZOOM_CLIENT_SECRET; if (!v) throw new Error('Missing ZOOM_CLIENT_SECRET env var — add it to backend/.env.local');     return v; }
-function getRedirectUri()  { return process.env.ZOOM_REDIRECT_URI ?? 'http://localhost:6767/api/zoom/auth/callback'; }
+function getRedirectUri()  { return process.env.ZOOM_REDIRECT_URI ?? 'http://localhost:6767/csfaq/api/zoom/auth/callback'; }
 
 /**
  * v1.69 — Phase 5: per-program Zoom credential resolver.
@@ -112,7 +112,7 @@ export function buildDynamicRedirectUri(request?: { headers?: Record<string, str
   if (process.env.ZOOM_REDIRECT_URI) return process.env.ZOOM_REDIRECT_URI;
 
   if (!request) {
-    return 'http://localhost:6767/api/zoom/auth/callback';
+    return 'http://localhost:6767/csfaq/api/zoom/auth/callback';
   }
 
   // Pull host (and proto) from the incoming request — works behind ngrok / proxies
@@ -123,7 +123,7 @@ export function buildDynamicRedirectUri(request?: { headers?: Record<string, str
   const host  = forwardedHost || hostHeader || 'localhost:6767';
   const proto = forwardedProto || request.protocol || (host.includes('localhost') ? 'http' : 'https');
 
-  return `${proto}://${host}/api/zoom/auth/callback`;
+  return `${proto}://${host}/csfaq/api/zoom/auth/callback`;
 }
 
 // ─── Token encryption helpers ─────────────────────────────────────────────────

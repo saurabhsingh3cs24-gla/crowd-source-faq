@@ -36,7 +36,7 @@ export async function executeAsk(
   let answer = '(no answer)';
   let sources: { title: string; source: string }[] = [];
   try {
-    const res = await fetch(buildBotApiUrl(config, '/api/ask-ai', batchId), {
+    const res = await fetch(buildBotApiUrl(config, '/csfaq/api/ask-ai', batchId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...botApiHeaders(config, batchId) },
       body: JSON.stringify({ query: question, topK: 3 }),

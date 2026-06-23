@@ -27,10 +27,6 @@ services:
       - INFISICAL_SECRET_PATH
     command: ["sh", "-c", "infisical run --env=\"$$INFISICAL_ENVIRONMENT\" --projectId=\"$$INFISICAL_PROJECT_ID\" --path=\"$$INFISICAL_SECRET_PATH\" -- node --import tsx src/server.ts"]
 
-  frontend:
-    image: ${DOCKERHUB_USERNAME:-vicharanashala}/csfaq-frontend:${TAG:-latest}
-    build: !reset null
-
   mongodb:
     # Use same image, but persist data on a named volume
     volumes:

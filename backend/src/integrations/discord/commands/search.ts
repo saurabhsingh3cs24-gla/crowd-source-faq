@@ -52,7 +52,7 @@ export async function executeSearch(
 
   let results: SearchResult[] = [];
   try {
-    const res = await fetch(buildBotApiUrl(config, '/api/search', batchId), {
+    const res = await fetch(buildBotApiUrl(config, '/csfaq/api/search', batchId), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...botApiHeaders(config, batchId) },
       body: JSON.stringify({ query, topK: limit }),

@@ -267,7 +267,7 @@ export const ConfigSchema = z.object({
     }),
     metrics: z.object({
       enabled: z.boolean().default(true),
-      endpoint: z.string().default('/api/metrics'),
+      endpoint: z.string().default('/csfaq/api/metrics'),
     }),
   }),
   cloudinary: z.object({

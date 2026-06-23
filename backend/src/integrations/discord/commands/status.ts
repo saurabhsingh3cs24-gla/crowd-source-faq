@@ -90,7 +90,7 @@ export async function executeStatus(
 
   let data: HealthResponse;
   try {
-    const res = await fetch(buildBotApiUrl(config, '/api/health', batchId), {
+    const res = await fetch(buildBotApiUrl(config, '/csfaq/api/health', batchId), {
       headers: botApiHeaders(config, batchId),
     });
     if (!res.ok) {

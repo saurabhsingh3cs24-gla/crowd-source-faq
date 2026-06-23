@@ -22,7 +22,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "6767:6767"
+      - "8080:6767"
     depends_on:
       mongodb:
         condition: service_started
@@ -37,18 +37,6 @@ services:
       - JWT_SECRET=${JWT_SECRET:-supersecretjwttokengeneratedfordockercompose32chars}
     volumes:
       - ./logs:/app/logs
-    restart: unless-stopped
-    networks:
-      - yaksha-net
-
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-    ports:
-      - "8080:80"
-    depends_on:
-      - backend
     restart: unless-stopped
     networks:
       - yaksha-net

@@ -2,6 +2,8 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import * as Sentry from '@sentry/node';
 import { expressIntegration } from '@sentry/node';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { registerMiddleware } from './middleware.js';
 import { registerRoutes } from './routes.js';
 import { getMetrics } from '../utils/http/metrics.js';
@@ -34,7 +36,7 @@ export function createApp(config: any): Express {
   registerRoutes(app);
 
   // Mount special utility endpoints
-  app.get('/api/health', async (req: Request, res: Response) => {
+  app.get('/csfaq/api/health', async (req: Request, res: Response) => {
     let dbStatus = 'disconnected';
     try {
       const conn = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
@@ -53,7 +55,7 @@ export function createApp(config: any): Express {
     });
   });
 
-  app.post('/api/warm', async (_req: Request, res: Response) => {
+  app.post('/csfaq/api/warm', async (_req: Request, res: Response) => {
     try {
       await import('../utils/ai/embeddings.js').then(m => m.warmEmbedder());
       res.json({ status: 'warmed' });
@@ -62,7 +64,7 @@ export function createApp(config: any): Express {
     }
   });
 
-  app.get('/api/metrics', async (_req: Request, res: Response) => {
+  app.get('/csfaq/api/metrics', async (_req: Request, res: Response) => {
     try {
       const metrics = getMetrics();
       res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
@@ -71,6 +73,22 @@ export function createApp(config: any): Express {
       res.status(500).json({ message: 'metrics unavailable' });
     }
   });
+
+  // Serve static assets and SPA fallback
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const frontendDistPath = path.resolve(__dirname, '../../../frontend/dist');
+
+  // Serve static files under /csfaq base path
+  app.use('/csfaq', express.static(frontendDistPath));
+
+  // SPA fallback for all sub-routes under /csfaq
+  app.get('/csfaq/*', (req, res) => {
+    res.sendFile(path.resolve(frontendDistPath, 'index.html'));
+  });
+
+  // Redirect root '/' and bare '/csfaq' to '/csfaq/'
+  app.get('/', (req, res) => res.redirect('/csfaq/'));
+  app.get('/csfaq', (req, res) => res.redirect('/csfaq/'));
 
   // Global Error Handler
   app.use((err: { status?: number; message?: string; stack?: string }, req: Request, res: Response, next: NextFunction) => {
