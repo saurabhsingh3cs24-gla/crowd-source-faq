@@ -243,7 +243,7 @@ describe('admin.config.service — validateKey() (internal)', () => {
     ['program.65fe.jwt.secret', true],         // per-program override, program id starts with digit
     ['program.65feabc123abc123abc123ab.ai.threshold', true], // realistic ObjectId
     ['AI_DUPLICATE_THRESHOLD', true],          // all-caps key works
-    ['_starts_with_underscore', false],         // leading _ not allowed
+    ['_starts_with_underscore', true],          // leading _ allowed for system keys
     ['has spaces', false],
     ['jwt..secret', false],                    // consecutive dots
     ['jwt!secret', false],

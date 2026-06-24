@@ -78,7 +78,7 @@ export interface SetConfigResult {
 // Allow segments to start with either letter OR digit so per-program keys
 // like `program.65feabc123abc.jwt.secret` (where the program id is a
 // 24-char hex Mongo ObjectId starting with a digit) are accepted.
-const KEY_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_]*(\.[a-zA-Z0-9][a-zA-Z0-9_]*)*$/;
+const KEY_PATTERN = /^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)*$/;
 const MAX_KEY_LEN = 200;
 const MAX_VALUE_LEN = 100_000; // 100 KB — plenty for any reasonable config
 
