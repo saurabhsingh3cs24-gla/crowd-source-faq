@@ -27,6 +27,7 @@ import CommunityPost from '../community/community-post.model.js';
 import FAQ from '../faq/faq.model.js';
 import { TranscriptKnowledge } from '../knowledge/transcript-knowledge.model.js';
 import Notification from '../notification/notification.model.js';
+import { readSetting } from '../program/app-setting.model.js';
 // L1 fix (v1.68): use the named `cronLog` for the auto-answer
 // scheduler + manual trigger so every line carries the [cron]
 // category tag (grep filter). 28 bare `logger` calls
@@ -43,19 +44,6 @@ import {
   isSensitiveContent,
 } from '../../utils/ai/pipelineCommon.js';
 
-// ─── Sensitive content detection (shared — imported from pipelineCommon) ──────
-// Minimum confidence to auto-approve and post the answer (0–1)
-const AUTO_APPROVE_THRESHOLD = parseFloat(
-  process.env['AUTO_ANSWER_APPROVE_THRESHOLD'] || '0.85'
-);
-// Minimum confidence to suggest for admin review
-const SUGGEST_THRESHOLD = parseFloat(
-  process.env['AUTO_ANSWER_SUGGEST_THRESHOLD'] || '0.60'
-);
-// Max posts to process per scheduler run (prevents runaway batch jobs)
-const BATCH_SIZE = parseInt(process.env['AUTO_ANSWER_BATCH_SIZE'] || '20');
-// Posts must be unanswered for at least this many hours before being eligible
-const MIN_POST_AGE_HOURS = parseInt(process.env['AUTO_ANSWER_MIN_POST_AGE_HOURS'] || '2');
 // Max AI answer length (characters)
 const MAX_ANSWER_CHARS = 1500;
 
@@ -82,7 +70,9 @@ interface AnswerMatch {
  * The three sources are queried in parallel (faster) and their scores are
  * normalized onto the same 0-1 scale so they can be compared.
  */
-async function findBestAnswer(postTitle: string, postBody: string): Promise<AnswerMatch | null> {
+async function findBestAnswer(postTitle: string, postBody: string, batchId?: Types.ObjectId | string | null): Promise<AnswerMatch | null> {
+  const AUTO_APPROVE_THRESHOLD = await readSetting('autoAnswerApproveThreshold', 0.85, batchId);
+  const SUGGEST_THRESHOLD = await readSetting('autoAnswerSuggestThreshold', 0.60, batchId);
   const queryText = `${postTitle} ${postBody}`.slice(0, 2000);
 
   // ── Fan out to all three sources in parallel ─────────────────────────────
@@ -229,6 +219,8 @@ async function findBestAnswer(postTitle: string, postBody: string): Promise<Answ
 // ─── Per-post processor ──────────────────────────────────────────────────────
 
 async function processPost(post: InstanceType<typeof CommunityPost>): Promise<void> {
+  const batchId = post.batchId;
+  const AUTO_APPROVE_THRESHOLD = await readSetting('autoAnswerApproveThreshold', 0.85, batchId);
   const postTitle = post.title;
   const postBody = post.body ?? '';
 
@@ -253,7 +245,7 @@ async function processPost(post: InstanceType<typeof CommunityPost>): Promise<vo
     { $inc: { aiAnswerAttempts: 1 }, $set: { lastCheckedAt: new Date() } }
   );
 
-  const match = await findBestAnswer(postTitle, postBody);
+  const match = await findBestAnswer(postTitle, postBody, batchId);
   const sensitive = isSensitiveContent(`${postTitle} ${postBody}`);
 
   if (!match) {
@@ -514,6 +506,10 @@ export const runAutoAnswer = async (req: Request, res: Response): Promise<void> 
   const processAll = req.query.all === 'true';
 
   try {
+    const batchIdRaw = req.query.batchId || req.body.batchId;
+    const batchId = typeof batchIdRaw === 'string' && Types.ObjectId.isValid(batchIdRaw) ? batchIdRaw : null;
+    const MIN_POST_AGE_HOURS = await readSetting('autoAnswerMinAgeHours', 2, batchId);
+    const BATCH_SIZE = await readSetting('autoAnswerBatchSize', 20, batchId);
     // Build query for eligible posts
     const cutoff = new Date(Date.now() - MIN_POST_AGE_HOURS * 60 * 60 * 1000);
     const query: Record<string, unknown> = {
@@ -618,6 +614,8 @@ export function stopAutoAnswerScheduler(): void {
 
 // Internal version without Express req/res
 async function runAutoAnswerInternal(): Promise<void> {
+  const MIN_POST_AGE_HOURS = await readSetting('autoAnswerMinAgeHours', 2);
+  const BATCH_SIZE = await readSetting('autoAnswerBatchSize', 20);
   const cutoff = new Date(Date.now() - MIN_POST_AGE_HOURS * 60 * 60 * 1000);
   const posts = await CommunityPost.find({
     status: 'unanswered',

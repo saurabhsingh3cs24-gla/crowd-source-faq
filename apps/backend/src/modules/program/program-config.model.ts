@@ -59,6 +59,12 @@ export interface IProgramAppSettings {
   goldenTicketCooldownHours: number;
   goldenTicketSpCost: number;
   penaltyMultiplier: number;
+  autoAnswerApproveThreshold?: number;
+  autoAnswerSuggestThreshold?: number;
+  autoAnswerMinConfidence?: number;
+  autoAnswerBatchSize?: number;
+  autoAnswerMinAgeHours?: number;
+  faqDuplicateThreshold?: number;
 }
 
 export interface IProgramConfig extends Document {
@@ -104,6 +110,12 @@ const programConfigSchema = new MongooseSchema<IProgramConfig>(
       goldenTicketCooldownHours: { type: Number, default: 48 },
       goldenTicketSpCost:         { type: Number, default: 50 },
       penaltyMultiplier:          { type: Number, default: 1 },
+      autoAnswerApproveThreshold: { type: Number, default: null },
+      autoAnswerSuggestThreshold: { type: Number, default: null },
+      autoAnswerMinConfidence: { type: Number, default: null },
+      autoAnswerBatchSize: { type: Number, default: null },
+      autoAnswerMinAgeHours: { type: Number, default: null },
+      faqDuplicateThreshold: { type: Number, default: null }
     },
   },
   { timestamps: true }

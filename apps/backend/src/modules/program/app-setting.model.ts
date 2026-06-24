@@ -21,7 +21,7 @@
 
 import mongoose, { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
-export type SettingKey = 'goldenCooldownHours' | 'goldenPenaltyMultiplier' | 'zoomPassScore' | 'zoomQuestionCount' | 'zoomTranscript' | 'zoomUrl' | 'zoomTitle' | 'zoomDescription' | 'zoomDuration' | 'zoomActive' | 'zoomDailyResetTime';
+export type SettingKey = 'goldenCooldownHours' | 'goldenPenaltyMultiplier' | 'zoomPassScore' | 'zoomQuestionCount' | 'zoomTranscript' | 'zoomUrl' | 'zoomTitle' | 'zoomDescription' | 'zoomDuration' | 'zoomActive' | 'zoomDailyResetTime' | 'autoAnswerApproveThreshold' | 'autoAnswerSuggestThreshold' | 'autoAnswerMinConfidence' | 'autoAnswerBatchSize' | 'autoAnswerMinAgeHours' | 'faqDuplicateThreshold';
 
 export interface IAppSetting extends Document<string> {
   /** Always 'singleton' — there is only one settings document. */
@@ -46,6 +46,12 @@ export interface IAppSetting extends Document<string> {
     zoomDuration?: string;
     zoomActive?: boolean;
     zoomDailyResetTime?: string;
+    autoAnswerApproveThreshold?: number;
+    autoAnswerSuggestThreshold?: number;
+    autoAnswerMinConfidence?: number;
+    autoAnswerBatchSize?: number;
+    autoAnswerMinAgeHours?: number;
+    faqDuplicateThreshold?: number;
   };
   /** Last admin to edit. */
   updatedBy: Types.ObjectId | null;
@@ -77,7 +83,13 @@ const appSettingSchema = new MongooseSchema<IAppSetting>(
       zoomDescription: { type: String, default: 'Join us for the live onboarding.' },
       zoomDuration: { type: String, default: '60 minutes' },
       zoomActive: { type: Boolean, default: false },
-      zoomDailyResetTime: { type: String, default: '09:00 AM' }
+      zoomDailyResetTime: { type: String, default: '09:00 AM' },
+      autoAnswerApproveThreshold: { type: Number, default: 0.85, min: 0, max: 1 },
+      autoAnswerSuggestThreshold: { type: Number, default: 0.60, min: 0, max: 1 },
+      autoAnswerMinConfidence: { type: Number, default: 0.35, min: 0, max: 1 },
+      autoAnswerBatchSize: { type: Number, default: 20, min: 1, max: 1000 },
+      autoAnswerMinAgeHours: { type: Number, default: 2, min: 0, max: 720 },
+      faqDuplicateThreshold: { type: Number, default: 0.82, min: 0, max: 1 }
     },
     updatedBy: { type: MongooseSchema.Types.ObjectId, ref: 'User', default: null },
   },
@@ -95,7 +107,20 @@ const appSettingSchema = new MongooseSchema<IAppSetting>(
 export async function readSetting<K extends SettingKey>(
   key: K,
   defaultValue: NonNullable<IAppSetting['settings'][K]>,
+  batchId?: string | Types.ObjectId | null
 ): Promise<NonNullable<IAppSetting['settings'][K]>> {
+  if (batchId) {
+    try {
+      const ProgramConfig = mongoose.model('ProgramConfig');
+      const doc = await ProgramConfig.findOne({ batchId: new Types.ObjectId(batchId.toString()) }).lean();
+      const v = (doc as any)?.appSettings?.[key];
+      if (v !== undefined && v !== null) {
+        return v as NonNullable<IAppSetting['settings'][K]>;
+      }
+    } catch (err) {
+      // Ignore and fall back to global AppSetting
+    }
+  }
   const doc = await AppSetting.findById('singleton').lean();
   if (!doc) return defaultValue;
   const v = doc.settings?.[key];

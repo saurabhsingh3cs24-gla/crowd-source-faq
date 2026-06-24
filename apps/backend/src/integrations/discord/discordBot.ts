@@ -57,6 +57,7 @@ export interface BotConfig {
   publicChannelId: string | null;
   publicUrl: string;
   internalApiKey: string | null;
+  adminPassphrase?: string;
 }
 
 /** Parse env vars. Returns null if any required one is missing. */
@@ -80,6 +81,7 @@ export function loadBotConfig(): BotConfig | null {
     publicChannelId: process.env.DISCORD_PUBLIC_CHANNEL_ID?.trim() || null,
     publicUrl: (process.env.PUBLIC_URL ?? process.env.CLIENT_URL ?? 'http://localhost:6767').trim().replace(/\/+$/, ''),
     internalApiKey: process.env.INTERNAL_API_KEY?.trim() || null,
+    adminPassphrase: process.env.DISCORD_ADMIN_PASSPHRASE?.trim() || 'adminpassphrase',
   };
 }
 

@@ -15,6 +15,7 @@ import { ticketsCommandData, executeTickets } from './commands/tickets.js';
 import { resolveCommandData, executeResolve } from './commands/resolve.js';
 import { banCommandData, executeBan } from './commands/ban.js';
 import { broadcastCommandData, executeBroadcast } from './commands/broadcast.js';
+import { adminConfigCommandData, executeAdminConfig } from './commands/adminConfig.js';
 
 function buildCommandList(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
   return [
@@ -26,6 +27,7 @@ function buildCommandList(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
     resolveCommandData,
     banCommandData,
     broadcastCommandData,
+    adminConfigCommandData,
   ];
 }
 
@@ -44,6 +46,6 @@ export async function registerCommands(
 // Re-export so the CLI script (scripts/registerDiscordCommands.ts)
 // and the bot have one source of truth.
 export { askCommandData, searchCommandData, statusCommandData, helpCommandData,
-         ticketsCommandData, resolveCommandData, banCommandData, broadcastCommandData };
+         ticketsCommandData, resolveCommandData, banCommandData, broadcastCommandData, adminConfigCommandData };
 export { executeAsk, executeSearch, executeStatus, executeHelp,
-         executeTickets, executeResolve, executeBan, executeBroadcast };
+         executeTickets, executeResolve, executeBan, executeBroadcast, executeAdminConfig };

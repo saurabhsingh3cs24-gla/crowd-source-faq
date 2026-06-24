@@ -22,6 +22,7 @@ import { executeTickets } from '../commands/tickets.js';
 import { executeResolve } from '../commands/resolve.js';
 import { executeBan } from '../commands/ban.js';
 import { executeBroadcast } from '../commands/broadcast.js';
+import { executeAdminConfig } from '../commands/adminConfig.js';
 
 /**
  * v1.69 — Phase 6+ runtime context carried alongside the
@@ -49,9 +50,16 @@ export async function handleInteraction(
     ? ctx
     : { config: ctx as BotConfig, batchId: null };
 
-  // We only handle ChatInputCommand (slash) interactions. Other
-  // interaction types (autocomplete, modal submit, button
-  // click) aren't used yet.
+  if (interaction.isButton() && interaction.customId.startsWith('admin_config_')) {
+    const { handleAdminConfigButton } = await import('../commands/adminConfig.js');
+    return await handleAdminConfigButton(interaction, runtime.config, runtime.batchId);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('admin_config_modal_')) {
+    const { handleAdminConfigModal } = await import('../commands/adminConfig.js');
+    return await handleAdminConfigModal(interaction, runtime.config, runtime.batchId);
+  }
+
   if (!interaction.isChatInputCommand()) return;
   const cmd = interaction as ChatInputCommandInteraction;
 
@@ -65,6 +73,7 @@ export async function handleInteraction(
       case 'resolve':   return await executeResolve(cmd, runtime.config, runtime.batchId);
       case 'ban':       return await executeBan(cmd, runtime.config, runtime.batchId);
       case 'broadcast': return await executeBroadcast(cmd, runtime.config, runtime.batchId);
+      case 'admin-config': return await executeAdminConfig(cmd, runtime.config, runtime.batchId);
       default:
         await cmd.reply({
           embeds: [new EmbedBuilder()
@@ -92,7 +101,7 @@ export async function handleInteraction(
   }
 }
 
-export function isAdmin(interaction: ChatInputCommandInteraction, ctx: BotConfig | BotRuntimeContext): boolean {
+export function isAdmin(interaction: Interaction, ctx: BotConfig | BotRuntimeContext): boolean {
   const config = 'config' in ctx ? ctx.config : ctx;
   if (config.adminUserIds.length === 0) return false;
   return config.adminUserIds.includes(interaction.user.id);

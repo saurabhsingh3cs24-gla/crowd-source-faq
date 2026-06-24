@@ -13,6 +13,7 @@ import { autoAwardBadges } from '../moderation/reputation.controller.js';
 import { sanitizeHtml } from '../../utils/http/sanitize.js';
 import Batch from '../program/batch.model.js';
 import { invalidatePublicCaches } from './public-faq.controller.js';
+import { readSetting } from '../program/app-setting.model.js';
 // v1.69 — Phase 3a: every public read in this file funnels its
 // Mongoose filter through withProgramScope. Single tenant callers
 // (no batchId) keep working until the rollout flips required=true.
@@ -523,7 +524,8 @@ export const checkFAQMatch = async (req: Request<{}, {}, CheckFAQMatchBody>, res
       category: string;
       score: number;
     } | null;
-    const matched = topMatch && topMatch.score >= 0.82;
+    const matchThreshold = await readSetting('faqDuplicateThreshold', 0.82, batchId);
+    const matched = topMatch && topMatch.score >= matchThreshold;
 
     res.json({
       matched,
