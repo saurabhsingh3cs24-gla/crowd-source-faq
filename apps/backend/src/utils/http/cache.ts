@@ -86,10 +86,7 @@ function getRedis(): CacheClient | null {
 
 function getLocalRedisClient(): CacheClient | null {
   try {
-    const rawUrl = process.env.REDIS_URL || '';
-    const localUrl = process.env.REDIS_LOCAL_URL || 
-      (!rawUrl.startsWith('http') ? rawUrl : '') || 
-      'redis://127.0.0.1:6379';
+    const localUrl = process.env.REDIS_LOCAL_URL || 'redis://127.0.0.1:6379';
     const localIo = new IORedis(localUrl, {
       maxRetriesPerRequest: 3,
       lazyConnect: true,

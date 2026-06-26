@@ -34,7 +34,7 @@ let _clientInitialized = false;
 let useLocalFallback = false;
 
 function buildLocalClient(): IORedis {
-  const localUrl = process.env.REDIS_LOCAL_TCP_URL || process.env.REDIS_TCP_URL || 'redis://127.0.0.1:6379';
+  const localUrl = process.env.REDIS_LOCAL_TCP_URL || 'redis://127.0.0.1:6379';
   const localClient = new IORedis(localUrl, {
     maxRetriesPerRequest: 3,
     lazyConnect: true,

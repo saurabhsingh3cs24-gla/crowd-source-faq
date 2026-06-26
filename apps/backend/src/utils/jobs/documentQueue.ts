@@ -44,13 +44,13 @@ let useLocalFallback = false;
 
 function getRedisUrl(): string {
   const config = loadConfig();
-  const fallback = process.env.REDIS_LOCAL_TCP_URL || process.env.REDIS_TCP_URL || 'redis://127.0.0.1:6379';
+  const fallback = process.env.REDIS_LOCAL_TCP_URL || 'redis://127.0.0.1:6379';
   if (useLocalFallback) {
     return fallback;
   }
   const url = config.redis.tcpUrl;
   if (!url || url === '#' || url.trim() === '') {
-    return fallback;
+    return process.env.REDIS_TCP_URL || fallback;
   }
   return url;
 }
