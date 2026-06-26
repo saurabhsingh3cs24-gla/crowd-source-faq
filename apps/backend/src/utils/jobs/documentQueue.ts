@@ -34,17 +34,29 @@
 import { Queue, Worker, QueueEvents, type Job, type Processor, type ConnectionOptions } from 'bullmq';
 import { logger } from '../http/logger.js';
 import { processDocument } from './documentJob.js';
+import { loadConfig } from '../../config/loader.js';
 
 // ─── Connection ──────────────────────────────────────────────────────────────
 
 const QUEUE_NAME = 'document-processing';
 
-function getRedisUrl(): string | null {
-  return process.env.REDIS_TCP_URL || null;
+let useLocalFallback = false;
+
+function getRedisUrl(): string {
+  const config = loadConfig();
+  const fallback = process.env.REDIS_LOCAL_TCP_URL || process.env.REDIS_TCP_URL || 'redis://127.0.0.1:6379';
+  if (useLocalFallback) {
+    return fallback;
+  }
+  const url = config.redis.tcpUrl;
+  if (!url || url === '#' || url.trim() === '') {
+    return fallback;
+  }
+  return url;
 }
 
 export function isDocumentQueueEnabled(): boolean {
-  return getRedisUrl() !== null;
+  return true; // Always enabled (falls back to local Redis)
 }
 
 /**
@@ -181,6 +193,14 @@ export function startDocumentWorker(): boolean {
   });
   _worker.on('error', (err) => {
     logger.warn(`[documentQueue] worker error: ${err.message}`);
+    const msg = err.message || '';
+    if (msg.includes('ECONNREFUSED') || msg.includes('rate limit') || msg.includes('quota') || msg.includes('Forbidden')) {
+      if (!useLocalFallback) {
+        logger.warn('[documentQueue] Remote Redis connection failed. Falling back to local Redis.');
+        useLocalFallback = true;
+        void recreateQueueAndWorker();
+      }
+    }
   });
 
   _events = new QueueEvents(QUEUE_NAME, { connection: conn });
@@ -190,6 +210,45 @@ export function startDocumentWorker(): boolean {
 
   logger.info(`[documentQueue] worker started, queue=${QUEUE_NAME}, concurrency=3`);
   return true;
+}
+
+async function recreateQueueAndWorker(): Promise<void> {
+  try {
+    if (_worker) {
+      await _worker.close();
+      _worker = null;
+    }
+    if (_queue) {
+      await _queue.close();
+      _queue = null;
+    }
+    if (_events) {
+      await _events.close();
+      _events = null;
+    }
+    
+    const conn = buildConnectionOptions();
+    if (conn) {
+      _queue = new Queue<DocumentJobData>(QUEUE_NAME, { connection: conn });
+      _worker = new Worker<DocumentJobData, DocumentJobResult>(QUEUE_NAME, processor, {
+        connection: conn,
+        concurrency: 3,
+        lockDuration: 5 * 60 * 1000,
+      });
+      
+      _worker.on('failed', (job, err) => {
+        logger.warn(`[documentQueue] job ${job?.id} failed: ${err.message}`);
+      });
+      _worker.on('error', (err) => {
+        logger.warn(`[documentQueue] fallback worker error: ${err.message}`);
+      });
+
+      _events = new QueueEvents(QUEUE_NAME, { connection: conn });
+      logger.info('[documentQueue] Recreated document queue and worker using local Redis fallback');
+    }
+  } catch (err) {
+    logger.warn(`[documentQueue] Failover recreation failed: ${(err as Error).message}`);
+  }
 }
 
 /** Stop the worker. Called on SIGTERM. */

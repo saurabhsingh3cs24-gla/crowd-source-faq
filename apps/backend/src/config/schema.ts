@@ -23,8 +23,8 @@ export const ConfigSchema = z.object({
   auth: z.object({
     jwt: z.object({
       expiresIn: z.string().default('7d'),
-      issuer: z.string().default('shamagama'),
-      audience: z.string().default('shamagama-api'),
+      issuer: z.string().default('csfaq'),
+      audience: z.string().default('csfaq-api'),
     }),
     password: z.object({
       minLength: z.number().default(6),
@@ -304,6 +304,15 @@ export const ConfigSchema = z.object({
       documentPipeline: z.boolean().default(false),
       discordIntegration: z.boolean().default(false),
     }),
+  }),
+  redis: z.object({
+    url: z.string().default(''),
+    token: z.string().default(''),
+    tcpUrl: z.string().default(''),
+  }).default({
+    url: '',
+    token: '',
+    tcpUrl: '',
   }),
 });
 
