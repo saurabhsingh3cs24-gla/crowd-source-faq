@@ -117,9 +117,12 @@ export default function CommentNode({
 
     api.post<{ upvotedByMe: boolean }>(`/community/${postId}/comments/${comment._id}/upvote`)
       .then(res => {
+        // H11 FIX: use previousUpvotes/previousDownvotes (captured before
+        // optimistic mutation) instead of localUpvotes/localDownvotes which
+        // are already mutated by the time .then() fires.
         setLocalUpvotes(res.data.upvotedByMe
-          ? [...(localUpvotes.filter(u => idMatches(u, currentUserId))), currentUserId]
-          : localUpvotes.filter(u => idMatches(u, currentUserId))
+          ? [...(previousUpvotes.filter(u => idMatches(u, currentUserId))), currentUserId]
+          : previousUpvotes.filter(u => idMatches(u, currentUserId))
         );
         setLocalDownvotes(prev =>
           prev.filter(u => idMatches(u, currentUserId))
@@ -194,8 +197,10 @@ export default function CommentNode({
       setActionError(friendlyError(e, 'Reply failed. Please try again.'));
       setTimeout(() => setActionError(null), 3000);
     } finally {
-      replyInFlightRef.current = false;
+      // M4 FIX: reset ref AFTER setReplyLoading(false) commits so the guard
+      // is still active while React batches/publishes the loading state.
       setReplyLoading(false);
+      replyInFlightRef.current = false;
     }
   };
 

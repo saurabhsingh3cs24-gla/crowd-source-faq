@@ -28,7 +28,7 @@ interface FeatureFlagContextValue {
   /** Re-fetch the flag list (e.g. after the admin toggles one). */
   refresh: () => Promise<void>;
   /** Admin-only — toggle a flag's state on the server. */
-  setFlag: (key: string, enabled: boolean) => Promise<boolean>;
+  setFlag: (key: string, enabled: boolean) => Promise<{ ok: boolean; error?: string }>;
 }
 
 const FeatureFlagContext = createContext<FeatureFlagContextValue | null>(null);
@@ -41,12 +41,15 @@ export function useFeatureFlags(): FeatureFlagContextValue {
   return ctx;
 }
 
-/** Convenience: a hook for one specific flag. Returns undefined while
- *  the flag list is still loading. */
-export function useFeatureFlag(key: string): boolean | undefined {
+/** Convenience: a hook for one specific flag. Returns:
+ *  - `undefined` while the flag list is still loading
+ *  - `null` when the key is not found in the map (unknown flag)
+ *  - `true` / `false` when the flag exists and has a known enabled state
+ */
+export function useFeatureFlag(key: string): boolean | null | undefined {
   const { flags, loading } = useFeatureFlags();
   if (loading) return undefined;
-  return flags[key]?.enabled ?? false;
+  return flags[key]?.enabled ?? null;
 }
 
 interface ProviderProps { children: React.ReactNode }
@@ -58,13 +61,16 @@ export function FeatureFlagProvider({ children }: ProviderProps): React.ReactEle
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    // H6 fix: reset error at start so a transient failure doesn't permanently
+    // brick every FeatureGate. L7 fix: keep loading=true for guests so the
+    // loading skeleton shows instead of silently rendering all-off.
+    setError(null);
+    setLoading(true);
     if (!isAuthenticated) {
       setFlags({});
-      setError(null);
       setLoading(false);
       return;
     }
-    setLoading(true);
     try {
       const res = await api.get<{ flags: FeatureFlag[] }>('/feature-flags');
       const map: Record<string, FeatureFlag> = {};
@@ -91,14 +97,15 @@ export function FeatureFlagProvider({ children }: ProviderProps): React.ReactEle
 
   const refresh = useCallback(async () => { await load(); }, [load]);
 
-  const setFlag = useCallback(async (key: string, enabled: boolean): Promise<boolean> => {
+  const setFlag = useCallback(async (key: string, enabled: boolean): Promise<{ ok: boolean; error?: string }> => {
     try {
       await api.patch(`/feature-flags/${key}`, { enabled });
       await load();
-      return true;
+      return { ok: true };
     } catch (err) {
-      setError('Failed to update feature flag.');
-      return false;
+      const message = 'Failed to update feature flag.';
+      setError(message);
+      return { ok: false, error: message };
     }
   }, [load]);
 

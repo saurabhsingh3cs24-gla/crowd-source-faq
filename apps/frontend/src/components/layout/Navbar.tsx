@@ -106,7 +106,10 @@ export default function Navbar({ showProgramSwitcher: _showProgramSwitcher = fal
   const handleLogout = () => {
     setProfileOpen(false);
     logout();
-    // Stay on current page — the user is just logged out, not navigated.
+    // Stay on current page but strip any ?next= redirect param so the
+    // user doesn't re-land on the same page after logout.
+    const cleanPath = location.pathname;
+    navigate(cleanPath, { replace: true });
   };
 
   const initials = user?.name ? user.name.charAt(0).toUpperCase() : '?';
@@ -240,12 +243,20 @@ export default function Navbar({ showProgramSwitcher: _showProgramSwitcher = fal
                             <p className="text-sm font-medium text-ink">{user?.name || 'User'}</p>
                             <p className="text-xs text-ink-faint">{user?.email || ''}</p>
                           </div>
-                          {(user?.role === 'admin' || user?.role === 'moderator') && (
+                          {user?.role === 'admin' && (
                             <button
                               onClick={() => { navigate('/admin'); setProfileOpen(false); }}
                               className="w-full text-left px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-[rgb(var(--bg-card-rgb)_/_0.5)] hover:text-ink transition-colors border-b border-[rgb(var(--border-rgb)_/_0.3)]"
                             >
-                              Admin Dashboard
+                              Admin Panel
+                            </button>
+                          )}
+                          {user?.role === 'moderator' && (
+                            <button
+                              onClick={() => { navigate('/admin/moderation'); setProfileOpen(false); }}
+                              className="w-full text-left px-4 py-2.5 text-sm font-medium text-ink-soft hover:bg-[rgb(var(--bg-card-rgb)_/_0.5)] hover:text-ink transition-colors border-b border-[rgb(var(--border-rgb)_/_0.3)]"
+                            >
+                              Moderation Panel
                             </button>
                           )}
                           <button
@@ -340,12 +351,12 @@ export default function Navbar({ showProgramSwitcher: _showProgramSwitcher = fal
         }}
       >
         <div className="px-6 py-4 flex flex-col gap-1">
-          {user?.role === 'admin' && (
+          {isAuthenticated && (
             <div className="px-4 py-2 border-b border-border/40 mb-2">
               <p className="text-[10px] uppercase tracking-wider font-semibold text-ink-faint mb-1.5">
                 Current Program
               </p>
-              <BatchSwitcher showCreateLink={true} compact className="w-full" />
+              <BatchSwitcher showCreateLink={user?.role === 'admin'} compact className="w-full" />
             </div>
           )}
           {allNavItems.map(({ label, to }) => (

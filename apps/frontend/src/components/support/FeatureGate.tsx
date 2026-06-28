@@ -1,8 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useFeatureFlag } from '../../context/FeatureFlagContext';
+import { useAuth } from '../../hooks/useAuth';
+import Spinner from '../ui/Spinner';
 
 export function FeatureDisabledPanel({ feature }: { feature: string }): React.ReactElement {
+  const { user } = useAuth();
+  const showAdminLink = user?.role === 'admin' || user?.role === 'moderator';
+
   return (
     <div className="min-h-[60vh] flex items-center justify-center px-4 py-8">
       <motion.div 
@@ -40,7 +45,7 @@ export function FeatureDisabledPanel({ feature }: { feature: string }): React.Re
           This feature is currently deactivated. If this is unexpected, you can enable it instantly in the system console.
         </p>
 
-        {/* Actionable Code Block / Admin Switch Route */}
+        {showAdminLink && (
         <div className="p-4 rounded-2xl bg-mist/50 border border-border/50 text-xs text-ink-soft flex items-center justify-center gap-2">
           <span>Enable at</span>
           <a 
@@ -50,6 +55,7 @@ export function FeatureDisabledPanel({ feature }: { feature: string }): React.Re
             /admin/features
           </a>
         </div>
+        )}
       </motion.div>
     </div>
   );
@@ -63,17 +69,34 @@ export function FeatureGate({
   children,
   featureLabel,
   loadingFallback,
+  requiredRoles,
 }: {
   featureKey: string;
   featureLabel: string;
   children: React.ReactNode;
   loadingFallback?: React.ReactNode;
+  requiredRoles?: string[];
 }): React.ReactElement {
+  const { user } = useAuth();
   const enabled = useFeatureFlag(featureKey);
   if (enabled === undefined) {
-    return <>{loadingFallback ?? <div className="min-h-[40vh]" />}</>;
+    return (
+      <>{loadingFallback ?? (
+        <div className="min-h-[40vh] flex items-center justify-center">
+          <Spinner size="md" />
+        </div>
+      )}</>
+    );
+  }
+  if (enabled === null) {
+    // Flag key not found in map — the flag does not exist in the system.
+    // Render the unavailable panel so admins notice the misconfiguration.
+    return <FeatureDisabledPanel feature={featureLabel} />;
   }
   if (!enabled) {
+    return <FeatureDisabledPanel feature={featureLabel} />;
+  }
+  if (requiredRoles && requiredRoles.length > 0 && !requiredRoles.includes(user?.role ?? '')) {
     return <FeatureDisabledPanel feature={featureLabel} />;
   }
   return <>{children}</>;

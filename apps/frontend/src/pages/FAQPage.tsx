@@ -65,6 +65,9 @@ export default function FAQPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
+  // ── M8: Guard against missing batchId (no program selected) ────
+  const noProgramSelected = !batchId;
+
   // ── Fetch all FAQs when batchId changes ─────────────────────────
   useEffect(() => {
     if (!batchId) return;
@@ -165,6 +168,17 @@ export default function FAQPage() {
       return prev;
     }, { replace: true });
   }, [grouped, searchParams, setSearchParams]);
+
+  // ── L5: Sync search state from URL on back/forward navigation ───
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const urlSearch = params.get('search') ?? '';
+      setSearchQuery(urlSearch);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // ── Search bookkeeping ──────────────────────────────────────────────────
   useEffect(() => {
@@ -355,6 +369,14 @@ export default function FAQPage() {
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <div key={i} className="h-[200px] rounded-2xl border border-border bg-card/70 animate-pulse" />
             ))}
+          </div>
+        )}
+
+        {/* ─── NO PROGRAM SELECTED (M8 guard) ──────────────────────── */}
+        {noProgramSelected && !loading && (
+          <div className="mt-8 rounded-2xl bg-mist border border-border/50 p-8 text-center space-y-3">
+            <p className="text-sm font-medium text-ink">No program selected.</p>
+            <p className="text-xs text-ink-soft">Select a program above to browse FAQs relevant to your internship.</p>
           </div>
         )}
 

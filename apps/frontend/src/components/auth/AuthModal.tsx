@@ -1,4 +1,4 @@
-import React, { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import React, { useEffect, useState, useRef, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, type User } from '../../hooks/useAuth';
 import { useAuthModal } from '../../context/AuthModalContext';
@@ -57,6 +57,9 @@ export default function AuthModal() {
   // endpoint is unreachable so we never accidentally allow submit
   // against a downed backend.
   const [regStatus, setRegStatus] = useState<RegistrationStatus | null>(null);
+  // H9 — separate loading flag so we can show a spinner in the button
+  // during the initial regStatus fetch (distinct from per-submit loading).
+  const [regStatusLoading, setRegStatusLoading] = useState(true);
 
   // "closing" keeps the DOM node alive through the fade-out animation so
   // sibling dialogs (e.g. CreatePostDialog) don't appear on top of the
@@ -64,6 +67,9 @@ export default function AuthModal() {
   // returns null and the provider's closeModal is considered complete.
   const [closing, setClosing] = useState(false);
   const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // H6 — guard against Enter-key race: a rapid second Enter press
+  // should be a no-op while the first submission is still in-flight.
+  const submittedRef = useRef(false);
 
   // Sync the tab when the modal opens with a different starting tab.
   useEffect(() => {
@@ -86,16 +92,24 @@ export default function AuthModal() {
   useEffect(() => {
     if (!isOpen || tab !== 'register') return;
     let cancelled = false;
+    // H9 — mark loading true when we kick off a fresh fetch.
+    // Default true so button is dead from the start; cleared on
+    // first resolve OR on error (defaulting to closed).
+    setRegStatusLoading(true);
     api
       .get<RegistrationStatus>('/auth/registration-status')
       .then((res) => {
-        if (!cancelled) setRegStatus(res.data);
+        if (!cancelled) {
+          setRegStatus(res.data);
+          setRegStatusLoading(false);
+        }
       })
       .catch(() => {
         if (!cancelled) {
           // Default to closed on fetch failure so the submit button
           // stays disabled until the user retries or refreshes.
           setRegStatus({ enabled: false, openForAll: false });
+          setRegStatusLoading(false);
         }
       });
     return () => {
@@ -197,16 +211,22 @@ export default function AuthModal() {
 
   const handleRegisterSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    // H6 — guard against double-submit (Enter-key race).
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     if (!registerForm.name?.trim() || !registerForm.email || !registerForm.password) {
       setError('Please fill out all fields.');
+      submittedRef.current = false;
       return;
     }
     if (registerForm.password.length < 6) {
       setError('Password must be at least 6 characters.');
+      submittedRef.current = false;
       return;
     }
     if (registerForm.password !== registerForm.confirmPassword) {
       setError('Passwords do not match.');
+      submittedRef.current = false;
       return;
     }
     setLoading(true);
@@ -230,6 +250,7 @@ export default function AuthModal() {
       setError(axiosErr.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
+      submittedRef.current = false;
     }
   };
 
@@ -424,7 +445,10 @@ export default function AuthModal() {
             )}
             <Button
               type="submit"
-              loading={loading}
+              // H9 — include regStatusLoading so the spinner appears while
+              // the initial regStatus fetch is in flight (distinct from
+              // per-submit loading).
+              loading={loading || regStatusLoading}
               // Block submit while we don't yet know the registration
               // status (status fetch in flight) or when the gate is
               // closed. We still allow submit when invite-only + no
@@ -433,7 +457,7 @@ export default function AuthModal() {
               disabled={loading || regStatus === null || !regStatus.enabled}
               className="w-full mt-1"
             >
-              Create account
+              {regStatusLoading ? 'Loading…' : 'Create account'}
             </Button>
           </form>
         )}

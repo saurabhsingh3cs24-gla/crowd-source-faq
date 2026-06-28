@@ -331,19 +331,31 @@ function CommentItem({ comment, post, currentUserId, userRole, onUpdate }: {
   };
 
   const handleVerify = async () => {
-    const res = await api.patch<{ verified: boolean }>(
-      `/community/${post._id}/comments/${comment._id}/verify`
-    );
-    onUpdate((post.comments as Comment[]).map(c =>
-      c._id === comment._id ? { ...c, verified: res.data.verified } : c
-    ));
+    try {
+      const res = await api.patch<{ verified: boolean }>(
+        `/community/${post._id}/comments/${comment._id}/verify`
+      );
+      onUpdate((post.comments as Comment[]).map(c =>
+        c._id === comment._id ? { ...c, verified: res.data.verified } : c
+      ));
+    } catch (e) {
+      const msg = friendlyError(e, 'Failed to update verified status.');
+      setActionError(msg);
+      setTimeout(() => setActionError(null), 3000);
+    }
   };
 
   const handleAccept = async () => {
-    const res = await api.patch<{ post: Post }>(
-      `/community/${post._id}/comments/${comment._id}/accept-answer`
-    );
-    onUpdate((res.data as any).comments || []);
+    try {
+      const res = await api.patch<{ post: Post }>(
+        `/community/${post._id}/comments/${comment._id}/accept-answer`
+      );
+      onUpdate((res.data as any).comments || []);
+    } catch (e) {
+      const msg = friendlyError(e, 'Failed to accept answer.');
+      setActionError(msg);
+      setTimeout(() => setActionError(null), 3000);
+    }
   };
 
   return (
@@ -530,7 +542,7 @@ export default function PostDetailDialog({ post: initialPost, onClose, currentUs
       setPost(p => ({ ...p, comments: [...(p.comments || []), res.data.comment] }));
       setCommentText('');
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Comment failed.';
+      const msg = friendlyError(e, 'Comment failed.');
       setActionError(msg);
       setTimeout(() => setActionError(null), 3000);
     } finally {
@@ -549,7 +561,7 @@ export default function PostDetailDialog({ post: initialPost, onClose, currentUs
       setShowResolveForm(false);
       setResolveText('');
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Could not mark as resolved.';
+      const msg = friendlyError(e, 'Could not mark as resolved.');
       setActionError(msg);
       setTimeout(() => setActionError(null), 3000);
     } finally { setResolveLoading(false); }
@@ -581,7 +593,7 @@ export default function PostDetailDialog({ post: initialPost, onClose, currentUs
       document.body.appendChild(banner);
       setTimeout(() => banner.remove(), 3000);
     } catch (e) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Failed to submit report.';
+      const msg = friendlyError(e, 'Failed to submit report.');
       setActionError(msg);
       setTimeout(() => setActionError(null), 4000);
     } finally { setReportLoading(false); }

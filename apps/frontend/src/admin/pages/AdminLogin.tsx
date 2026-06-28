@@ -10,9 +10,17 @@ export default function AdminLogin() {
   const [password, setPassword] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
-  const { login } = useAdminAuth();
+  const { login, isAdmin, loading: authLoading } = useAdminAuth();
   const navigate = useNavigate();
-  const publicUrl = getPublicUrl();
+
+  // Redirect if already authenticated as admin.
+  // Skip during auth loading to avoid flickering — the useEffect fires
+  // as soon as the token resolves from /auth/me.
+  React.useEffect(() => {
+    if (!authLoading && isAdmin) {
+      navigate('/admin', { replace: true });
+    }
+  }, [authLoading, isAdmin, navigate]);
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();

@@ -21,7 +21,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import axios from 'axios';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
   fetchGoldenQueue,
@@ -99,9 +99,10 @@ function AnimatedNumber({ value }: { value: string }) {
 export default function GoldenTicketPage(): React.ReactElement {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const q = searchParams.get('q');
-  const isAuthed = Boolean(user?.id);
+  const isAuthed = Boolean(user?._id);
 
   const [status, setStatus] = useState<SpurtiStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -111,6 +112,7 @@ export default function GoldenTicketPage(): React.ReactElement {
   const [details, setDetails] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [queue, setQueue] = useState<GoldenQueueItem[]>([]);
   const [myQueuePosition, setMyQueuePosition] = useState<number | null>(null);
@@ -139,11 +141,13 @@ export default function GoldenTicketPage(): React.ReactElement {
   const reloadStatus = useCallback(async () => {
     if (!isAuthed) return;
     setStatusLoading(true);
+    setLoadError(null);
     try {
       const s = await fetchSpurtiStatus();
       setStatus(s);
-    } catch {
+    } catch (err) {
       setStatus(null);
+      setLoadError(friendlyError(err, 'Failed to load Spurti status.'));
     } finally {
       setStatusLoading(false);
     }
@@ -152,17 +156,19 @@ export default function GoldenTicketPage(): React.ReactElement {
   const reloadQueue = useCallback(async () => {
     if (!isAuthed) return;
     setQueueLoading(true);
+    setLoadError(null);
     try {
       const { items, myQueuePosition, ticketsAhead, mySpCost } = await fetchGoldenQueue(8, q || undefined);
       setQueue(items);
       setMyQueuePosition(myQueuePosition ?? null);
       setTicketsAhead(ticketsAhead ?? null);
       setMySpCost(mySpCost ?? null);
-    } catch {
+    } catch (err) {
       setQueue([]);
       setMyQueuePosition(null);
       setTicketsAhead(null);
       setMySpCost(null);
+      setLoadError(friendlyError(err, 'Failed to load escalation queue.'));
     } finally {
       setQueueLoading(false);
     }
@@ -202,8 +208,8 @@ export default function GoldenTicketPage(): React.ReactElement {
     }
   }
 
-  // ── Unauthed gate ────────────────────────────────────────────────────────
-  if (!isAuthed) {
+  // ── Unauthed / guest gate ────────────────────────────────────────────────────
+  if (!isAuthed || user?.role === 'guest') {
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center">
         <h1 className="font-serif text-3xl text-ink mb-3">Golden Ticket</h1>
@@ -223,7 +229,7 @@ export default function GoldenTicketPage(): React.ReactElement {
       {/* v1.66 anti-pattern: never use navigate(-1) for back. */}
       <button
         type="button"
-        onClick={() => navigate('/home')}
+        onClick={() => navigate(location.state?.from || '/', { replace: true })}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-ink transition-colors"
         aria-label="Back to home"
       >
@@ -453,6 +459,12 @@ export default function GoldenTicketPage(): React.ReactElement {
 
       {statusLoading && !status && (
         <p className="text-center text-sm text-ink-soft mt-6">Loading your Spurti Points balance…</p>
+      )}
+
+      {loadError && (
+        <div className="max-w-2xl mx-auto mt-6 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
+          {loadError}
+        </div>
       )}
     </div>
   );
