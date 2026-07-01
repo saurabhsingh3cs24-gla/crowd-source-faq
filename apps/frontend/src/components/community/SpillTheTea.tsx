@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api, { friendlyError } from '../../utils/api';
 import { useAuth } from '../../hooks/useAuth';
 
 type TeaEventType = 'faq_published' | 'post_answered' | 'post_deleted' | 'post_answered_user';
 
-interface ToastState { msg: string; type: 'success' | 'info' };
+interface ToastState { msg: string; type: 'success' | 'info' }
 
 interface TeaDrop {
   _id: string;
@@ -43,6 +44,7 @@ function timeAgo(dateStr: string): string {
 
 export default function SpillTheTea() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [drops, setDrops] = useState<TeaDrop[]>([]);
   const [unread, setUnread] = useState(0);
@@ -99,7 +101,6 @@ export default function SpillTheTea() {
     fetchTea(1, true).then(() => {
       // lastSeenIdRef is set inside fetchTea after this resolves
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
@@ -151,7 +152,7 @@ export default function SpillTheTea() {
   const handleDropClick = (drop: TeaDrop) => {
     if (!drop.read) handleMarkOneRead(drop._id);
     const search = drop.postTitle ?? drop.faqQuestion ?? '';
-    if (search) window.location.href = `/faq?q=${encodeURIComponent(search)}`;
+    if (search) navigate(`/faq?q=${encodeURIComponent(search)}`);
   };
 
   if (!user) return null;

@@ -6,6 +6,7 @@ import connectDB from '../config/db.js';
 import { runWithContext } from '../utils/http/requestContext.js';
 import { requestLogger } from '../utils/http/requestLogger.js';
 import { ingestFrontendLog } from '../utils/http/fileLogger.js';
+import { programScope } from '../middleware/programScope.js';
 
 export function registerMiddleware(app: Express, config: any): void {
   // 1. Trust the proxy hops
@@ -34,9 +35,33 @@ export function registerMiddleware(app: Express, config: any): void {
   // 4. Request logging
   app.use(requestLogger);
 
-  // Single-container deployment — same-origin, no CORS needed.
-  // (Kept as a passthrough in case the admin SPA is embedded cross-origin in future.)
-  app.use(cors({ origin: true, credentials: true }));
+  // CORS. Default deployment is single-container / same-origin, so we keep
+  // the permissive reflect-origin behaviour as the backward-compatible
+  // default. Operators who serve the SPA from a different origin can set
+  // CORS_ALLOWED_ORIGINS (comma-separated) to lock credentialed CORS down to
+  // an explicit allowlist instead of reflecting any origin — recommended for
+  // any cross-origin or cookie-bearing setup. Requests with no Origin header
+  // (same-origin, curl, server-to-server) are always allowed.
+  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  if (allowedOrigins.length > 0) {
+    app.use(
+      cors({
+        origin(origin, callback) {
+          if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+          }
+          callback(new Error(`Origin ${origin} not allowed by CORS`));
+        },
+        credentials: true,
+      }),
+    );
+  } else {
+    app.use(cors({ origin: true, credentials: true }));
+  }
 
   // 6. Security headers via Helmet
   app.use(helmet({
@@ -45,6 +70,9 @@ export function registerMiddleware(app: Express, config: any): void {
 
   // 7. Body Parsing
   app.use(express.json());
+
+  // 7.5. Global Program Scoping (soft)
+  app.use(programScope({ required: false }));
 
   // 8. Minimal Cookie parser
   app.use((req: Request, _res: Response, next: (e?: unknown) => void) => {

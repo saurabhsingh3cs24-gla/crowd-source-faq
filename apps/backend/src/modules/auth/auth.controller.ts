@@ -8,9 +8,9 @@ import CommunityPost from '../community/community-post.model.js';
 import Notification from '../notification/notification.model.js';
 import RevokedToken from './revoked-token.model.js';
 import RefreshToken from './refresh-token.model.js';
-import { registerSchema, loginSchema, changePasswordSchema } from '../../utils/auth/validation.js';
+import { registerSchema, loginSchema } from '../../utils/auth/validation.js';
 import { sanitizeHtml } from '../../utils/http/sanitize.js';
-import { logger, authLog, securityLog } from '../../utils/http/logger.js';
+import { authLog, securityLog } from '../../utils/http/logger.js';
 
 const hashToken = (token: string): string => {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -29,7 +29,7 @@ const generateToken = (id: string): { token: string; jti: string; expiresAt: Dat
 };
 
 const generateRefreshToken = (id: string): { token: string; jti: string; expiresAt: Date } => {
-  const secret = (process.env.JWT_REFRESH_SECRET ?? process.env.JWT_SECRET) as string;
+  const secret = (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET) as string;
   const expiresIn = '7d';
   const jti = uuidv4();
   const token = jwt.sign({ id, jti }, secret, { expiresIn } as jwt.SignOptions);
@@ -596,7 +596,7 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const secret = (process.env.JWT_REFRESH_SECRET ?? process.env.JWT_SECRET) as string;
+    const secret = (process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET) as string;
     let decoded: { id: string; jti: string };
     try {
       decoded = jwt.verify(refreshToken, secret) as { id: string; jti: string };

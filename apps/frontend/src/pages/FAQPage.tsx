@@ -13,7 +13,7 @@ import Footer from '../components/layout/Footer';
 import UserActiveProgramIndicator from '../components/layout/UserActiveProgramIndicator';
 import SearchBar from '../components/search/SearchBar';
 import { HomeDoodles } from '../components/ui/PageDoodles';
-import api, { friendlyError } from '../utils/api';
+import api from '../utils/api';
 import type { TrendingQuery } from '../types/ui';
 import { useBatch } from '../context/BatchContext';
 
@@ -64,6 +64,9 @@ export default function FAQPage() {
   const scrollToTop = useCallback(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
+
+  // ── M8: Guard against missing batchId (no program selected) ────
+  const noProgramSelected = !batchId;
 
   // ── Fetch all FAQs when batchId changes ─────────────────────────
   useEffect(() => {
@@ -166,6 +169,17 @@ export default function FAQPage() {
     }, { replace: true });
   }, [grouped, searchParams, setSearchParams]);
 
+  // ── L5: Sync search state from URL on back/forward navigation ───
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const urlSearch = params.get('search') ?? '';
+      setSearchQuery(urlSearch);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // ── Search bookkeeping ──────────────────────────────────────────────────
   useEffect(() => {
     setVisibleCount(8);
@@ -187,21 +201,22 @@ export default function FAQPage() {
   const activeCategoryItems = activeCategory ? (grouped[activeCategory] || []) : [];
   const activeCategoryMeta = getCategoryDescription(activeCategoryItems);
 
-  const searchActive = searchQuery.trim().length >= 3 && Array.isArray(searchResults);
-  const showDropdown = searchQuery.trim().length > 0 && !searchActive;
+  const searchActive = searchQuery.trim().length >= 3 && Array.isArray(searchResults) && searchResults.length > 0;
+  // v2 — Show the glassmorphic dropdown as soon as the user types a single
+  // character. The dropdown's left column shows live results from the same
+  // `searchResults` array that the in-page section consumes below, so the
+  // two views cannot disagree on counts.
+  const showDropdown = searchQuery.trim().length > 0;
 
+  // v2 — Dropdown now ONLY shows API search results, which stream live as
+  // the user types. The right column stays as the always-live category
+  // autocomplete inside SearchDropdown itself.
   const dropdownItems = useMemo(() => {
-    if (Array.isArray(searchResults) && searchQuery.trim().length >= 3) {
+    if (Array.isArray(searchResults)) {
       return searchResults;
     }
-    if (!searchQuery.trim()) {
-      return flatQuestions.slice(0, 5);
-    }
-    const normalized = searchQuery.trim().toLowerCase();
-    return flatQuestions.filter((item) => (
-      getQuestionTitle(item).toLowerCase().includes(normalized)
-    )).slice(0, 5);
-  }, [flatQuestions, searchResults, searchQuery]);
+    return [];
+  }, [searchResults]);
 
   const relatedItems = useMemo(() => {
     if (!activeQuestion?.category) return [];
@@ -247,7 +262,12 @@ export default function FAQPage() {
     if (value.trim()) {
       setActiveCategory('');
       setActiveQuestion(null);
-      setSearchResults(null);
+      // v2 — Do NOT clear searchResults on every keystroke. The SearchBar
+      // streams new results every 300ms; wiping on every input causes a
+      // visible flicker between "5 results" and "0 results" while the user
+      // types. We let the SearchBar's debounced handleSearch() overwrite
+      // searchResults naturally; if the user goes below 3 chars, the
+      // SearchBar explicitly clears via onResults(null).
     }
   };
 
@@ -358,6 +378,14 @@ export default function FAQPage() {
           </div>
         )}
 
+        {/* ─── NO PROGRAM SELECTED (M8 guard) ──────────────────────── */}
+        {noProgramSelected && !loading && (
+          <div className="mt-8 rounded-2xl bg-mist border border-border/50 p-8 text-center space-y-3">
+            <p className="text-sm font-medium text-ink">No program selected.</p>
+            <p className="text-xs text-ink-soft">Select a program above to browse FAQs relevant to your internship.</p>
+          </div>
+        )}
+
         {error && !loading && (
           <div className="mt-8 rounded-2xl bg-danger-light border border-danger/15 p-6 text-center space-y-3">
             <p className="text-sm text-danger font-medium">{error}</p>
@@ -387,9 +415,16 @@ export default function FAQPage() {
           />
         )}
 
-        {/* ─── SEARCH RESULTS ───────────────────────────────────────── */}
+        {/* ─── SEARCH RESULTS ─────────────────────────────────────────
+            v2 — Uses the same `.search-panel` glassmorphic class as the
+            search dropdown above, so the two views feel like one component
+            family. This section appears once results exist and the dropdown
+            is dismissed (focus lost / user scrolled / Enter). It does NOT
+            hide the hero or category cards — those stay visible so the
+            user keeps their navigation scaffold.
+        */}
         {!loading && !error && !activeQuestion && searchActive && (
-          <section className="max-w-4xl mx-auto mt-6">
+          <section className="max-w-4xl mx-auto mt-6 search-panel p-6">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
               <div>
                 <p className="text-xs font-semibold text-ink-faint uppercase tracking-wide">Search results</p>

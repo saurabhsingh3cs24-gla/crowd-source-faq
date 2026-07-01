@@ -25,6 +25,7 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import adminApi from '../../utils/adminApi';
+import { useAdminAuth } from '../../hooks/useAdminAuth';
 
 interface ConfigResponse {
   enabled: boolean;
@@ -55,8 +56,12 @@ function formatDate(iso: string | null | undefined): string {
   }
 }
 
-export default function RegistrationControlCard({ onSaved }: Props): React.ReactElement {
+export default function RegistrationControlCard({ onSaved }: Props): React.ReactNode {
+  const { user } = useAdminAuth();
+  if (user?.role !== 'admin') return null;
+
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [openForAll, setOpenForAll] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
@@ -83,6 +88,7 @@ export default function RegistrationControlCard({ onSaved }: Props): React.React
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
         'Failed to load registration settings';
+      setError(msg);
       onSaved(msg, 'error');
     } finally {
       setLoading(false);
@@ -215,6 +221,17 @@ export default function RegistrationControlCard({ onSaved }: Props): React.React
       </div>
 
       <div className="px-5 py-4 space-y-5">
+        {/* Error banner — shown when initial load fails */}
+        {error && (
+          <div
+            className="rounded-md px-3 py-2 text-xs border border-red-200 bg-red-50 text-red-900"
+            aria-live="assertive"
+          >
+            <span className="font-semibold">Load failed: </span>
+            {error}
+          </div>
+        )}
+
         {/* Mode banner — derived state, not editable */}
         <div
           className={[

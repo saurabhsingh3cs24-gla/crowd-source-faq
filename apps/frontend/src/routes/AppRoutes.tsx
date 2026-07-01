@@ -1,6 +1,7 @@
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useState, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { useFeatureFlag } from '../context/FeatureFlagContext';
 import Spinner from '../components/ui/Spinner';
 import { FeatureGate } from '../components/support/FeatureGate';
 import MainLayout from '../components/layout/MainLayout';
@@ -14,13 +15,11 @@ const HomePage = lazy(() => import('../pages/HomePage'));
 const FAQPage = lazy(() => import('../pages/FAQPage'));
 const CommunityPage = lazy(() => import('../pages/CommunityPage'));
 const SavedKnowledgePage = lazy(() => import('../pages/SavedKnowledgePage'));
-const BatchPortalPage = lazy(() => import('../pages/BatchPortalPage'));
 const SupportIndexPage = lazy(() => import('../pages/SupportIndexPage'));
 const NewSupportRequestPage = lazy(() => import('../pages/NewSupportRequestPage'));
 const SupportTicketPage = lazy(() => import('../pages/SupportTicketPage'));
 const GoldenTicketPage = lazy(() => import('../pages/GoldenTicketPage'));
 const WelcomePackagePage = lazy(() => import('../pages/WelcomePackagePage'));
-const Yaksha2026_27ProgramPage = lazy(() => import('../pages/Yaksha2026_27ProgramPage'));
 const ProgramPortalPage = lazy(() => import('../pages/ProgramPortalPage'));
 const ProgramPage = lazy(() => import('../pages/ProgramPage'));
 
@@ -82,8 +81,15 @@ function GoldenRoute() {
 export default function AppRoutes() {
   const { loading } = useAuth();
   const location = useLocation();
+  const askAiEnabled = useFeatureFlag('askAiChatbot');
+  const [mounted, setMounted] = useState(false);
 
-  if (loading) {
+  // Prevent flash: only render routes after first auth resolution
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (loading || !mounted) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center">
         <Spinner size="md" />
@@ -91,7 +97,11 @@ export default function AppRoutes() {
     );
   }
 
-  const showAskAI = !location.pathname.startsWith('/admin');
+  // Chatbot visibility is admin-controlled via the `askAiChatbot` feature
+  // flag (/admin/features). Never shown on admin pages. `askAiEnabled` is
+  // undefined while flags load and null for an unknown key — both treated
+  // as off so the button never flashes in.
+  const showAskAI = askAiEnabled === true && !location.pathname.startsWith('/admin');
 
   return (
     <>
@@ -122,7 +132,9 @@ export default function AppRoutes() {
               path="/welcome"
               element={
                 <AccountRoute>
-                  <WelcomePackagePage />
+                  <FeatureGate featureKey="welcomePackage" featureLabel="Welcome Package">
+                    <WelcomePackagePage />
+                  </FeatureGate>
                 </AccountRoute>
               }
             />
@@ -130,7 +142,7 @@ export default function AppRoutes() {
 
           <Route
             path="/admin/login"
-            element={<Navigate to="/?next=/admin" replace />}
+            element={<Navigate to="/admin" replace />}
           />
           <Route path="/admin" element={<AdminRoute><AdminLayout><AdminDashboard /></AdminLayout></AdminRoute>} />
           <Route path="/admin/faqs" element={<AdminRoute><AdminLayout><AdminFAQs /></AdminLayout></AdminRoute>} />
@@ -168,7 +180,7 @@ export default function AppRoutes() {
           </Route>
           <Route path="/admin/features" element={<AdminRoute><AdminLayout><AdminFeatures /></AdminLayout></AdminRoute>} />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" state={{ from: location.pathname }} />} />
         </Routes>
       </Suspense>
       {showAskAI && <AskAIButton />}

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api, { friendlyError } from '../../utils/api';
 import Avatar from '../ui/Avatar';
 import Badge from '../ui/Badge';
@@ -86,6 +87,7 @@ interface ThreadDetailProps {
 export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
   const { user } = useAuth();
   const gate = useAuthGate();
+  const navigate = useNavigate();
   const currentUserId = user?._id ?? '';
   const userRole = user?.role ?? '';
 
@@ -94,7 +96,7 @@ export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
   const [error, setError] = useState('');
   const [commentText, setCommentText] = useState('');
   const [commentLoading, setCommentLoading] = useState(false);
-  const [upvoteLoading, setUpvoteLoading] = useState(false);
+  const [upvoteLoading] = useState(false);
   const [showResolveForm, setShowResolveForm] = useState(false);
   const [resolveText, setResolveText] = useState('');
   const [resolveLoading, setResolveLoading] = useState(false);
@@ -120,6 +122,15 @@ export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
   const canResolve = userRole === 'admin' || userRole === 'moderator' || userRole === 'expert';
   const isPrivileged = userRole === 'admin' || userRole === 'moderator';
   const topLevelComments = post?.comments ?? [];
+
+  /** Safe navigation: external URLs open in new tab, internal ones use SPA routing. */
+  const navigateTo = (url: string) => {
+    if (url.startsWith('http') || url.startsWith('//')) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      navigate(url);
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -256,6 +267,7 @@ export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
 
   const doBookmark = () => {
     if (!post) return;
+    const previousBookmarks = post.bookmarks;
     const isBookmarked = post.bookmarks?.some(
       b => (typeof b === 'object' ? (b as { _id?: string })._id : b)?.toString() === currentUserId
     );
@@ -266,7 +278,7 @@ export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
         : [...(prev.bookmarks ?? []), currentUserId],
     } : prev);
     api.post(`/community/${post._id}/bookmark`).catch(e => {
-      setPost(prev => prev ? { ...prev, bookmarks: post.bookmarks } : prev);
+      setPost(prev => prev ? { ...prev, bookmarks: previousBookmarks } : prev);
       setActionError(friendlyError(e, 'Could not update bookmark. Please try again.'));
       setTimeout(() => setActionError(null), 3000);
     });
@@ -706,7 +718,7 @@ export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
                     {related.relatedQuestions.map((q) => (
                       <button
                         key={q._id}
-                        onClick={() => window.location.href = q.url}
+                        onClick={() => navigateTo(q.url)}
                         className="w-full text-left rounded-lg bg-mist/50 hover:bg-mist px-2.5 py-2 transition-colors group"
                       >
                         <p className="text-xs text-ink line-clamp-2 group-hover:text-accent transition-colors">{q.title}</p>
@@ -731,7 +743,7 @@ export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
                     {related.similarFaqs.map((f) => (
                       <button
                         key={f._id}
-                        onClick={() => window.location.href = f.url}
+                        onClick={() => navigateTo(f.url)}
                         className="w-full text-left rounded-lg bg-mist/50 hover:bg-mist px-2.5 py-2 transition-colors group"
                       >
                         <p className="text-xs text-ink line-clamp-2 group-hover:text-accent transition-colors">{f.title}</p>
@@ -822,4 +834,4 @@ export default function ThreadDetail({ postId, onClose }: ThreadDetailProps) {
     </div>
     </>
   );
-};
+}
