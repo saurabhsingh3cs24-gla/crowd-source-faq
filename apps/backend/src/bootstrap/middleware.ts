@@ -6,6 +6,7 @@ import connectDB from '../config/db.js';
 import { runWithContext } from '../utils/http/requestContext.js';
 import { requestLogger } from '../utils/http/requestLogger.js';
 import { ingestFrontendLog } from '../utils/http/fileLogger.js';
+import { publicBasePath } from '../utils/publicBasePath.js';
 import { programScope } from '../middleware/programScope.js';
 
 export function registerMiddleware(app: Express, config: any): void {
@@ -91,7 +92,20 @@ export function registerMiddleware(app: Express, config: any): void {
     next();
   });
 
-  // Serve static uploads
+  // Serve static uploads.
+  //
+  // v1.69 — publicBasePath fix: previously this mounted at
+  // `/uploads` only. When the app is hosted under `/csfaq/`
+  // (the only current deployment), browsers request asset URLs at
+  // `/csfaq/uploads/...` but the server only served `/uploads/...`,
+  // causing 404s on every uploaded SVG/PDF/etc. We now mount under
+  // BOTH paths: the public-base-prefixed one (canonical, matches
+  // the URLs the backend stores in Mongo) and the bare `/uploads`
+  // (kept as a safety net for any client still hitting the old
+  // path — e.g. a stale localStorage entry from before this fix).
+  // The `publicBasePath()` helper reads `PUBLIC_BASE_PATH` env
+  // (default `/csfaq`) so this works under any deployment prefix.
+  app.use(`${publicBasePath()}/uploads`, express.static('uploads'));
   app.use('/uploads', express.static('uploads'));
 
   // Frontend log endpoint
