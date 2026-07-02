@@ -49,7 +49,8 @@ export type RetrievalSourceName =
   | 'kb'
   | 'community'
   | 'comments'
-  | 'recent_activity';
+  | 'recent_activity'
+  | 'web';
 
 /** A single ranked hit. Sources return Omit<RankedHit, 'rank' | 'ageDays'>;
  *  fetchContext fills those in after normalization. */
