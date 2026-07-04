@@ -7,6 +7,8 @@ import { startEscalationScheduler, stopEscalationScheduler } from '../modules/co
 import { runScheduledAutoAnswer, stopAutoAnswerScheduler } from '../modules/ai/auto-answer.controller.js';
 import { runScheduledFAQAudit, stopFAQAuditScheduler } from '../modules/faq/faq-audit.controller.js';
 import { startDocumentWorker, stopDocumentWorker } from '../utils/jobs/documentQueue.js';
+import { notificationsService } from '../services/notifications.service.js';
+import { banService } from '../services/ban.service.js';
 import { cronManager } from '../core/scheduler/cronManager.js';
 import mongoose from 'mongoose';
 import { jobQueue } from '../utils/http/jobQueue.js';
@@ -76,6 +78,12 @@ export async function startup(config: any): Promise<void> {
   runScheduledAutoAnswer().catch((err) => logger.error(`[autoAnswer] Startup: ${(err as Error).message}`));
   runScheduledFAQAudit().catch((err) => logger.error(`[faqAudit] Startup: ${(err as Error).message}`));
 
+  // Phase 1 R3 — drain any pending notification outbox rows on startup
+  // so a restart doesn't sit on unsent notifications. Best-effort.
+  notificationsService.drain().catch((err) =>
+    logger.error(`[notifications] Startup drain failed: ${(err as Error).message}`),
+  );
+
   void startBot().catch((err) => logger.error(`[bot] startup: ${(err as Error).message}`));
   void botManager.startAll().catch((err) => logger.error(`[botManager] startAll: ${(err as Error).message}`));
 
@@ -92,6 +100,15 @@ export async function startup(config: any): Promise<void> {
     handler: runFreshnessCheck,
     intervalMs: config.cron.freshnessCheckIntervalMs,
     runOnStartup: true,
+  });
+
+  // Phase 1 R3 — drain the notification outbox every 60s. Retries
+  // any notifications that failed to persist on the original call.
+  cronManager.register({
+    name: 'notification-outbox-drain',
+    handler: () => notificationsService.drain(),
+    intervalMs: 60_000,
+    runOnStartup: false,
   });
 
   cronManager.register({
@@ -117,6 +134,20 @@ export async function startup(config: any): Promise<void> {
     runOnStartup: true,
   });
 
+  // Phase 1 R4 — clear expired Golden-bans on a schedule. The
+  // existing ad-hoc call inside escalationController still fires
+  // (every escalation-check tick) — that's fine, the function is
+  // idempotent — but registering it with cronManager here means a
+  // future refactor of the escalation scheduler can't silently
+  // drop the ban-cleanup schedule. Audit context:
+  // docs/redesign-plan.md §2.4 R4.
+  cronManager.register({
+    name: 'ban-cleanup',
+    handler: () => banService.clearExpiredGoldenBans(),
+    intervalMs: 60 * 60 * 1000, // 1h, matches escalation cadence
+    runOnStartup: true,
+  });
+
   cronManager.register({
     name: 'zoom-retry',
     handler: retryFailedMeetings,
@@ -124,8 +155,19 @@ export async function startup(config: any): Promise<void> {
     runOnStartup: false,
   });
 
-  const { isFeatureEnabled } = await import('../modules/program/feature-flag.controller.js');
-  const pipelineEnabled = await isFeatureEnabled('documentPipeline');
+  const { featureFlags, syncFeatureFlagRegistry } = await import('../services/featureFlags.js');
+  // Phase 1 R1: fail-closed boot check. Seed any registry flags that
+  // are missing from MongoDB and warn about orphans. Crashing here
+  // would prevent the server from booting after a partial deploy;
+  // logging is the right level — we don't want to brick prod over
+  // an off-by-one in the seed step.
+  try {
+    await syncFeatureFlagRegistry();
+  } catch (e) {
+    startupLog.error(`[featureFlags] registry sync failed at startup: ${(e as Error).message}`);
+  }
+
+  const pipelineEnabled = await featureFlags.isEnabled('documentPipeline');
 
   let documentWorkerStarted = false;
   if (pipelineEnabled) {
@@ -147,8 +189,90 @@ export async function startup(config: any): Promise<void> {
     logger.info('[server] document pipeline offline (disabled by feature flag or not configured)');
   }
 
-  // Start cron manager (async — reads overrides from DB before scheduling)
-  await cronManager.startAll();
+// Phase 3 R12 — auto-answer cron registration. Gated by the
+  // community.autoAnswer.enabled feature flag (kill switch). Uses
+  // the new services/autoAnswer.ts orchestrator; the legacy
+  // setInterval-based scheduler in auto-answer.controller.ts is now
+  // a no-op deprecation shim.
+  if (await featureFlags.isEnabled('communityAutoAnswer')) {
+    const { runAutoAnswerBatch } = await import('../services/autoAnswer.js');
+    const autoAnswerIntervalMs = config.cron?.autoAnswerIntervalMs ?? 24 * 60 * 60 * 1000;
+    cronManager.register({
+      name: 'auto-answer-batch',
+      handler: () => runAutoAnswerBatch({}),
+      intervalMs: autoAnswerIntervalMs,
+      runOnStartup: false,
+    });
+    logger.info(
+      `[server] auto-answer cron registered (every ${autoAnswerIntervalMs / 1000}s, concurrency-locked)`,
+    );
+  } else {
+    logger.info('[server] auto-answer cron disabled (communityAutoAnswer feature flag off)');
+  }
+
+  // v1.71 — hourly embedding-warm cron. Replaces the old per-request
+  // embed path that was timing out against the Hugging Face / local
+  // model. Now: cronManager ticks every 60 minutes and calls
+  // `embedUnprocessedKnowledge()` which back-fills any
+  // TranscriptKnowledge rows that are still missing an embedding
+  // (limit: KNOWLEDGE_EMBEDDING_BATCH * 5 per tick). The actual
+  // `/csfaq/api/search?q=...` endpoint no longer touches the embedder
+  // on the hot path — it degrades to text-only matching when the
+  // vector search can't run (see `search.controller.ts`). Manual
+  // trigger via `POST /csfaq/api/warm` still works.
+  if (await featureFlags.isEnabled('embeddingWarmCron')) {
+    const { embedUnprocessedKnowledge } = await import('../modules/knowledge/knowledge-base.service.js');
+    const embeddingWarmIntervalMs = 60 * 60 * 1000; // 1 hour
+    cronManager.register({
+      name: 'embedding-warm',
+      handler: async () => {
+        try {
+          const count = await embedUnprocessedKnowledge();
+          if (count > 0) {
+            logger.info(`[embedding-warm] cron embedded ${count} knowledge entries`);
+          }
+          // count === 0 is the common steady-state; stay quiet.
+        } catch (e: unknown) {
+          // Don't crash the cron loop — log and let the next tick retry.
+          logger.warn(`[embedding-warm] cron failed: ${(e as Error).message}`);
+        }
+      },
+      intervalMs: embeddingWarmIntervalMs,
+      runOnStartup: false, // opt-out of running on boot — first tick is 1h later
+    });
+    logger.info(
+      `[server] embedding-warm cron registered (every ${embeddingWarmIntervalMs / 1000}s)`,
+    );
+  } else {
+    logger.info('[server] embedding-warm cron disabled (embeddingWarmCron feature flag off)');
+  }
+
+  // Phase 8 — webAutoDiscover cron. Fetches each configured seed URL
+  // every 6 hours, follows same-domain links to depth 1, and upserts
+  // the results as `source='auto_discovered'` WebPage rows with
+  // `approved: false`. An admin then has to explicitly PATCH
+  // /admin/web-pages/:id/approve each row before it surfaces in the
+  // retrieval fan-out. Default off (see FEATURE_FLAGS) so the cron
+  // never runs without an explicit opt-in.
+  if (await featureFlags.isEnabled('webAutoDiscover')) {
+    const { runAutoDiscover } = await import('../services/webCrawler.js');
+    const webAutoDiscoverIntervalMs = 6 * 60 * 60 * 1000; // 6h
+    cronManager.register({
+      name: 'web-auto-discover',
+      handler: () => runAutoDiscover(),
+      intervalMs: webAutoDiscoverIntervalMs,
+      runOnStartup: false, // opt-in only — don't surprise the operator on first boot
+      startupDelayMs: 30_000, // small startup grace so other crons start first
+    });
+    logger.info(
+      `[server] web auto-discover cron registered (every ${webAutoDiscoverIntervalMs / 1000}s, concurrency-locked)`,
+    );
+  } else {
+    logger.info('[server] web auto-discover cron disabled (webAutoDiscover feature flag off)');
+  }
+
+  // Start cron manager
+  cronManager.startAll();
 }
 
 export async function stopAllSchedulers(): Promise<void> {

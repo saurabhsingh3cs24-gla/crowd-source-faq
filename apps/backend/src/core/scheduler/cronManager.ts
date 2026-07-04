@@ -1,7 +1,7 @@
 /**
  * cronManager.ts — central registry for periodic jobs.
  *
- * v1.71 — added introspection (listJobs / getJob / triggerOnce).
+* v1.71 — added introspection (listJobs / getJob / triggerOnce).
  * v1.71+ — added override-aware scheduling + persistent run history.
  *
  * Override semantics:
@@ -19,8 +19,14 @@
  *   - Every execution (cron tick, admin trigger) writes a CronJobRun
  *     document. After each write we prune to the last 50 per job
  *     (configurable via CRON_RUN_HISTORY_LIMIT env var).
+ *
+ * Concurrency lock:
+ *   - Every handler invocation is wrapped in runWithLock(); if a
+ *     job is already running the next tick is dropped with a warning
+ *     instead of stacking a parallel run. (Same atomic-write lesson
+ *     as commit 60c1af0 — findOneAndUpdate over a shared `running`
+ *     Set.) Public API (register / startAll / stopAll) unchanged.
  */
-
 import { logger } from '../../utils/http/logger.js';
 import CronScheduleOverride from '../../modules/admin/cron-schedule-override.model.js';
 import CronJobRun from '../../modules/admin/cron-job-run.model.js';
