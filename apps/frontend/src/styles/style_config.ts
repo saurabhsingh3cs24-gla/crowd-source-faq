@@ -373,3 +373,39 @@ export const accountLastUpdated   = 'text-sm text-ink-faint mt-2';
 
 export const inlineSuccessBanner = 'text-xs text-success bg-success-light border border-success/15 rounded-xl px-3 py-2';
 export const inlineDangerBanner  = 'text-xs text-danger bg-danger-light border border-danger/15 rounded-xl px-3 py-2';
+
+/* ── 31. Warning / amber banners ─────────────────────────────────
+ * Used in registration-status banners and similar "needs attention"
+ * surfaces. Replaces the old raw bg-amber-50/border-amber-200/text-amber-900
+ * pattern that bypassed the theme. */
+
+export const warningBorder        = 'rounded-md px-3 py-2 text-[11px] border bg-warning-light border-warning/30 text-warning';
+
+/* ── 31b. Danger-closed banner (registration closed, etc.) ─────── */
+
+export const dangerBorder         = 'rounded-md px-3 py-2 text-[11px] border bg-danger-light border-danger/30 text-danger';
+export const accentBorderMuted    = 'rounded-md px-3 py-2 text-[11px] border bg-accent/10 border-accent/30 text-accent';
+
+/* ── 32. Modal shell / panel ─────────────────────────────────────
+ * Generic modal container pattern. Used by AuthModal and any
+ * other overlay dialog. */
+
+export const modalShell          = 'fixed inset-0 z-[60] flex items-center justify-center px-4 animate-fade-in';
+export const modalTitleRow       = 'flex items-start justify-between mb-5';
+export const cardHeaderTitle     = 'text-base font-serif text-ink';
+
+/* ── 33. Auth-modal chrome ───────────────────────────────────────
+ * The close button, modal panel, tab row, input-icon button, and
+ * prompt/hint text used by AuthModal.tsx. */
+
+export const authModalPanel      = 'w-full max-w-sm bg-card rounded-2xl border border-border shadow-card p-6 animate-fade-in';
+export const authCloseButton     = 'w-7 h-7 flex items-center justify-center rounded-full text-ink-faint hover:text-ink hover:bg-mist transition-colors -mt-1 -mr-1';
+export const authTabRow          = 'flex items-center gap-1 p-1 rounded-full bg-mist mb-5';
+export const authTabBase         = 'flex-1 py-1.5 text-xs font-semibold rounded-full transition-colors';
+export const authTabActive       = 'bg-card text-ink shadow-subtle';
+export const authTabIdle         = 'text-ink-soft hover:text-ink';
+export const authInputIcon       = 'pointer-events-auto p-1 hover:text-ink transition-colors flex items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent/25';
+export const authInfoBox         = 'mt-3 rounded-xl border border-border bg-mist px-3 py-2.5 text-center text-[11px] text-ink-soft';
+export const authTitle           = 'text-base font-serif text-ink';
+export const authHintSoft        = 'text-[11px] text-ink-soft mt-1';
+export const authHintFaint       = 'text-[10px] text-ink-faint -mt-2';
