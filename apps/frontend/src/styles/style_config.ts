@@ -355,3 +355,21 @@ export const textAreaBase         = 'w-full rounded-xl border border-border bg-m
 /* ── 29. Empty-state padded text ────────────────────────────────── */
 
 export const emptyPaddedCenter    = 'text-xs text-ink-faint text-center py-8';
+
+/* ── 30. Account-page card / section ─────────────────────────────
+ * AccountPage sections — Password, Email, Connected Accounts, etc.
+ * Each section is a self-contained card with a header + body. */
+
+export const accountCard        = 'bg-card rounded-2xl border border-border p-6';
+export const accountCardStack   = 'bg-card rounded-2xl border border-border p-6 space-y-4';
+export const accountCardHeader  = 'flex items-center justify-between';
+export const accountSectionTitle = 'text-sm font-semibold text-ink uppercase tracking-wide';
+
+export const accountActionLink    = 'text-xs font-semibold text-accent hover:text-accent-hover transition-colors';
+export const accountActionLinkDisabled = 'text-xs font-semibold text-accent hover:text-accent-hover transition-colors disabled:opacity-50';
+export const accountCancelLink    = 'text-xs font-semibold text-ink-faint hover:text-ink transition-colors';
+
+export const accountLastUpdated   = 'text-sm text-ink-faint mt-2';
+
+export const inlineSuccessBanner = 'text-xs text-success bg-success-light border border-success/15 rounded-xl px-3 py-2';
+export const inlineDangerBanner  = 'text-xs text-danger bg-danger-light border border-danger/15 rounded-xl px-3 py-2';
