@@ -63,6 +63,7 @@ export const textHeaderXl    = 'text-2xl font-semibold text-ink';
 export const textLabelXsBold = 'text-xs font-semibold text-ink-faint uppercase tracking-wider mb-1';
 export const textLabelXs     = 'text-[11px] text-ink-faint';
 export const textLabelXsMb1  = 'text-[11px] font-semibold text-ink-faint uppercase tracking-wide';
+export const textLabelXsTop  = 'text-[11px] font-semibold text-ink-faint uppercase tracking-wide mt-1';
 
 export const textMono        = 'font-mono';
 export const textNumeric     = 'tabular-nums';
@@ -268,6 +269,19 @@ export const searchInputCompact = 'w-full bg-mist border border-border/60 text-i
 
 export const searchSuggestionItem = 'w-full text-left px-5 py-3.5 text-sm text-ink hover:bg-cream/60 transition-colors duration-150 border-b border-border/30 last:border-0 flex items-center gap-3';
 
+/* ── 19b. Search-dropdown panel chrome (SearchDropdown.tsx) ────────
+ * The sub-panel that opens below a search input on the FAQ page —
+ * shows matching questions on the left, categories on the right. */
+
+export const searchPanel             = 'search-panel';             /* CSS class — already theme-driven */
+export const searchPanelHeader       = 'flex items-center justify-between px-4 pt-4 pb-2';
+export const searchPanelLoadingSkeleton = 'h-[72px] rounded-2xl search-skeleton animate-pulse';
+export const searchPanelListEmpty    = 'rounded-2xl border border-dashed border-border bg-transparent p-4';
+export const searchListItemDefault   = 'w-full text-left rounded-2xl border border-border/60 px-3 py-2 search-list-item';
+export const searchListItemCompact   = 'w-full flex items-center gap-2 px-3 py-2 rounded-2xl border border-border/60 text-left search-list-item';
+export const searchListItemQuestionRow = 'text-sm font-semibold text-ink line-clamp-2';
+export const searchListItemResultBody = 'text-xs text-ink-soft line-clamp-3 mt-1 leading-relaxed';
+
 /* ── 20. Explore-page compact search bar ──────────────────────────
  * The Explore-page sticky search pill (different visual identity
  * from the home-page hero search). */
@@ -392,6 +406,7 @@ export const accentBorderMuted    = 'rounded-md px-3 py-2 text-[11px] border bg-
 
 export const modalShell          = 'fixed inset-0 z-[60] flex items-center justify-center px-4 animate-fade-in';
 export const modalTitleRow       = 'flex items-start justify-between mb-5';
+export const modalTitle          = 'text-sm font-bold text-ink';
 export const cardHeaderTitle     = 'text-base font-serif text-ink';
 
 /* ── 33. Auth-modal chrome ───────────────────────────────────────
