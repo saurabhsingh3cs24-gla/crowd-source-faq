@@ -7,13 +7,7 @@ import { listSupportRequests, SUPPORT_ISSUE_OPTIONS } from '../components/suppor
 import { getIssueIcon } from '../components/support/icons';
 import type { SupportListResponse, SupportStatus } from '../components/support/types';
 import Spinner from '../components/ui/Spinner';
-
-const STATUS_STYLES: Record<SupportStatus, string> = {
-  'Pending':   'bg-warning/15 text-warning border-warning/30',
-  'In Review': 'bg-admin-blue/15 text-admin-blue border-admin-blue/30',
-  'Resolved':  'bg-success/15 text-success border-success/30',
-  'Rejected':  'bg-danger/15 text-danger border-danger/30',
-};
+import { STATUS_STYLES } from '../styles/style_config';
 
 function SupportIndexInner(): React.ReactElement {
   const [data, setData] = useState<SupportListResponse | null>(null);

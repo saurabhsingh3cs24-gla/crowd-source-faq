@@ -11,15 +11,7 @@ import { getMyGoldenTicket } from '../components/support/api';
 import type { GoldenResolutionPublic, GoldenTicket } from '../components/support/types';
 import Spinner from '../components/ui/Spinner';
 import { friendlyError } from '../utils/api';
-
-function statusStyles(status: string): { bg: string; text: string; label: string } {
-  if (status === 'Resolved') return { bg: 'bg-accent/15', text: 'text-accent', label: 'Resolved' };
-  if (status === 'Rejected') return { bg: 'bg-danger/10', text: 'text-danger', label: 'Rejected' };
-  if (status === 'Pending' || status === 'open') return { bg: 'bg-warning/10', text: 'text-warning', label: 'Pending' };
-  if (status === 'In Review') return { bg: 'bg-accent/15', text: 'text-accent', label: 'In Review' };
-  if (status === 'closed') return { bg: 'bg-mist', text: 'text-ink-soft', label: 'Closed' };
-  return { bg: 'bg-mist', text: 'text-ink-faint', label: status };
-}
+import { getGoldenStatusStyle } from '../styles/style_config';
 
 function GoldenTicketDetailInner(): React.ReactElement {
   const { id } = useParams<{ id: string }>();
@@ -70,7 +62,7 @@ function GoldenTicketDetailInner(): React.ReactElement {
   }
   if (!ticket) return <div />;
 
-  const s = statusStyles(ticket.status);
+  const s = getGoldenStatusStyle(ticket.status);
   const isResolved = ticket.status === 'Resolved';
   const isRejected = ticket.status === 'Rejected';
   const answers = ticket.goldenResolutions ?? [];

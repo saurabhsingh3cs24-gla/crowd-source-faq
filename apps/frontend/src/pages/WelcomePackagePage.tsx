@@ -14,6 +14,7 @@ import api from '../utils/api';
 import { useAuth } from '../hooks/useAuth';
 import { useProgram } from '../context/ProgramContext';
 import { HomeDoodles } from '../components/ui/PageDoodles';
+import { spatialNavPill } from '../styles/style_config';
 
 export default function WelcomePackagePage() {
   const { user } = useAuth();
@@ -163,9 +164,8 @@ export default function WelcomePackagePage() {
           </motion.p>
         </div>
 
-        {/* Floating Command Palette Tab Navigation */}
         <div className="flex justify-center mb-12">
-          <div className="spatial-nav-pill flex p-1.5 rounded-full relative bg-[rgb(var(--bg-primary-rgb))]/30 border border-[rgb(var(--border-rgb))]/10 shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)]">
+          <div className={`${spatialNavPill} flex p-1.5 rounded-full relative bg-[rgb(var(--bg-primary-rgb))]/30 border border-[rgb(var(--border-rgb))]/10 shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)]`}>
             {tabs.map((tab) => (
               <button
                 key={tab.id}

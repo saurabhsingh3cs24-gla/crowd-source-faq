@@ -36,6 +36,7 @@ import {
   badgePendingReview,
   dangerBorder,
   inlineDangerBanner,
+  getGoldenStatusStyle,
 } from '../../styles/style_config';
 
 type Tab = 'resolved' | 'banned' | 'activity';
@@ -47,17 +48,8 @@ interface Props {
   loading: boolean;
 }
 
-function statusBadgeStyles(status: string): { bg: string; text: string; label: string } {
-  if (status === 'Resolved') return { bg: 'bg-accent/15', text: 'text-accent', label: 'Resolved' };
-  if (status === 'Rejected') return { bg: 'bg-danger/10', text: 'text-danger', label: 'Rejected' };
-  if (status === 'closed') return { bg: 'bg-mist', text: 'text-ink-soft', label: 'Closed' };
-  if (status === 'Pending' || status === 'open') return { bg: 'bg-warning/10', text: 'text-warning', label: 'Pending' };
-  if (status === 'In Review') return { bg: 'bg-accent/15', text: 'text-accent', label: 'In Review' };
-  return { bg: 'bg-mist', text: 'text-ink-faint', label: status };
-}
-
 function statusBadge(status: string): React.ReactElement {
-  const s = statusBadgeStyles(status);
+  const s = getGoldenStatusStyle(status);
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${s.bg} ${s.text}`}>
       {s.label}

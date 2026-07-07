@@ -30,7 +30,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import api from '../../utils/api';
 import { useProgram } from '../../context/ProgramContext';
 import { resolveAssetUrl } from '../../utils/publicUrl';
-import { inlineDangerBanner, communityToastWarn } from '../../styles/style_config';
+import { inlineDangerBanner, communityToastWarn, warningBorder } from '../../styles/style_config';
 
 type ResourceKind = 'video' | 'pdf' | 'pptx' | 'svg' | 'markdown' | 'txt' | 'link';
 
@@ -249,7 +249,7 @@ function ResourceRow({ resource, completed, onComplete }: RowProps): React.React
     return (
       <div className="space-y-2">
         <HeaderRow resource={resource} completed={completed} />
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className={warningBorder}>
           <p>Unsupported URL scheme. Admins must publish resource URLs with an http(s) scheme.</p>
         </div>
       </div>
@@ -613,7 +613,7 @@ function TxtRow({ resource, completed, onComplete }: RowProps): React.ReactEleme
       {loadError ? (
         // 1.3 — surface the CORS/network failure with a fallback link.
         // Same pattern as the existing SvgRow imgError fallback.
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className={warningBorder}>
           <p>Inline preview unavailable: {loadError}</p>
           <a href={resource.url} target="_blank" rel="noopener noreferrer"
             className="text-sm text-accent underline mt-1 inline-block">
@@ -675,7 +675,7 @@ function MarkdownRow({ resource, completed, onComplete }: RowProps): React.React
         }
       />
       {loadError ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className={warningBorder}>
           <p>Inline preview unavailable: {loadError}</p>
           <a href={resource.url} target="_blank" rel="noopener noreferrer"
             className="text-sm text-accent underline mt-1 inline-block">

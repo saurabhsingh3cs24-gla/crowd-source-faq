@@ -11,8 +11,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useAuthGate } from '../context/AuthModalContext';
 import type { Post } from '../types/ui';
 
-// Modular dialog components
 import CreatePostDialog from '../components/community/CreatePostDialog';
+import { buttonCommunityAsk } from '../styles/style_config';
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function CommunityPage() {
@@ -288,7 +288,7 @@ export default function CommunityPage() {
             <button
               id="ask-question-btn"
               onClick={handleAskQuestion}
-              className="btn-community-ask"
+              className={buttonCommunityAsk}
               aria-label="Ask a question"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">

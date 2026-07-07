@@ -24,6 +24,7 @@ import adminApi from '../utils/adminApi';
 import { friendlyError } from '../../utils/api';
 import { AdminCard, AdminSectionLabel } from '../components/ui/AdminCard';
 import Badge from '../components/common/Badge';
+import { warningBorder } from '../../styles/style_config';
 import { useCurrentProgramId } from '../../hooks/useProgramScopedApi';
 import { useDebounce } from '../../hooks/useDebounce';
 
@@ -596,7 +597,7 @@ function BulkUrlsResult({ result }: { result: BulkUrlsResponse | null }) {
         Failed <span className={`font-semibold tabular-nums ${failed.length > 0 ? 'text-danger' : 'text-ink-faint'}`}>{failed.length}</span>
       </p>
       {added.length > 0 && failed.length === 0 && (
-        <p className="text-xs text-emerald-700">All URLs queued successfully.</p>
+        <p className="text-xs text-success">All URLs queued successfully.</p>
       )}
       {failed.length > 0 && (
         <div className="border border-danger/40 bg-danger/5 rounded-md overflow-hidden">
@@ -784,7 +785,7 @@ function BulkDocsResult({ result }: { result: BulkDocsResponse | null }) {
         Failed <span className={`font-semibold tabular-nums ${failed.length > 0 ? 'text-danger' : 'text-ink-faint'}`}>{failed.length}</span>
       </p>
       {accepted.length > 0 && failed.length === 0 && (
-        <p className="text-xs text-emerald-700">All uploads queued for processing.</p>
+        <p className="text-xs text-success">All uploads queued for processing.</p>
       )}
       {failed.length > 0 && (
         <div className="border border-danger/40 bg-danger/5 rounded-md overflow-hidden">
@@ -1150,7 +1151,7 @@ function BulkPromoteResult({ result }: { result: BulkPromoteResponse | null }) {
         Skipped <span className="font-semibold tabular-nums">{skippedDuplicates.length}</span> duplicates
       </p>
       {invalidBatchIds.length > 0 && (
-        <div className="border border-amber-500/40 bg-amber-500/5 rounded-md px-3 py-2 text-xs text-amber-700">
+        <div className={warningBorder}>
           <p className="font-semibold mb-1">{invalidBatchIds.length} invalid batch id(s) ignored:</p>
           <ul className="list-disc list-inside space-y-0.5 font-mono break-all">
             {invalidBatchIds.map((id, idx) => (
