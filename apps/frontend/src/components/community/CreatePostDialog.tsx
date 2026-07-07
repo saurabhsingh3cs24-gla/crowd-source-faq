@@ -166,6 +166,14 @@ export default function CreatePostDialog({ onClose, onCreated, prefillTitle = ''
     return '';
   });
   const [loading, setLoading] = useState(false);
+  // Synchronous re-entry guard. The button's `disabled` prop already
+  // prevents the second click once React re-renders, but between the
+  // first click and the next render there's a small window where a fast
+  // double-click (or a screen-reader user hitting Enter twice) gets
+  // through. The ref updates synchronously, so the second call returns
+  // immediately without firing a duplicate POST. Reset in the finally
+  // block so the dialog can be reopened for a different post.
+  const submittingRef = useRef(false);
   const [error, setError] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [categoryOption, setCategoryOption] = useState<string>('');
@@ -243,6 +251,8 @@ export default function CreatePostDialog({ onClose, onCreated, prefillTitle = ''
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError('');
     if (!title.trim() || !body.trim()) {
       setError('Both title and description are required.');
@@ -263,22 +273,34 @@ export default function CreatePostDialog({ onClose, onCreated, prefillTitle = ''
     }
     setLoading(true);
     try {
-      const res = await api.post<{ post: Post }>('/community', {
-        title: title.trim(),
-        body: body.trim(),
-        tags,
-        // Send only the persisted fields the backend expects. The full
-        // Cloudinary response has more (eager, etc.) that we don't save.
-        attachments: attachments.map((a) => ({
-          url: a.url,
-          gcsUri: a.gcsUri,
-          objectPath: a.objectPath,
-          width: a.width,
-          height: a.height,
-          format: a.format,
-          bytes: a.bytes,
-        })),
-      });
+      // Per-form-mount idempotency key. Combined with the in-handler
+      // submittingRef guard, this catches (a) fast double-clicks within
+      // the React-render-lag window, and (b) network retries (mobile
+      // drop / VPN reconnect). The backend's `Idempotency-Key` header
+      // handler returns the same response for the same key within 60s.
+      // Random UUID per form mount — re-mounting the dialog gets a new
+      // key, which is what we want.
+      const idempotencyKey = crypto.randomUUID();
+      const res = await api.post<{ post: Post }>(
+        '/community',
+        {
+          title: title.trim(),
+          body: body.trim(),
+          tags,
+          // Send only the persisted fields the backend expects. The full
+          // Cloudinary response has more (eager, etc.) that we don't save.
+          attachments: attachments.map((a) => ({
+            url: a.url,
+            gcsUri: a.gcsUri,
+            objectPath: a.objectPath,
+            width: a.width,
+            height: a.height,
+            format: a.format,
+            bytes: a.bytes,
+          })),
+        },
+        { headers: { 'Idempotency-Key': idempotencyKey } },
+      );
       // Clear draft on success
       try { sessionStorage.removeItem(DRAFT_KEY); } catch { void 0 }
       // Show toast with duplicate check result
@@ -299,6 +321,7 @@ export default function CreatePostDialog({ onClose, onCreated, prefillTitle = ''
     } catch (err) {
       setError(friendlyError(err, 'Failed to post. Please try again.'));
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };

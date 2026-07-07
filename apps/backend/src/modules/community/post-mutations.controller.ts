@@ -24,12 +24,29 @@ import { sanitizeHtml } from '../../utils/http/sanitize.js';
 import { communityLog } from '../../utils/http/logger.js';
 import { evaluateDuplicates, isBlockingMatch } from './post-duplicate.controller.js';
 import { assertCanCreateContent } from '../../utils/banUtils.js';
+import { checkIdempotency, storeIdempotency } from '../../utils/http/idempotency.js';
 
 // POST /api/community — Create a new post (protected)
 export const createPost = async (req: Request, res: Response): Promise<void> => {
   if (!req.user) { res.status(401).json({ message: 'Not authorized' }); return; }
   // v1.66 — Golden-ban gate. 72h ban blocks new posts (questions, answers).
   if (!assertCanCreateContent(req.user, res)) return;
+
+  // Idempotency-Key (RFC 7231-ish): if the client provides a key, the
+  // same key within a 60s window returns the original response instead
+  // of creating a duplicate. Frontend generates a UUID per form-mount
+  // and sends it on submit. The check happens AFTER auth + ban gate
+  // so an unauthenticated request can't poison another user's cache.
+  // Read the Idempotency-Key header defensively — Express's req.headers
+  // is the standard access path but unit-test stubs may provide neither
+  // a method nor a property. The nullish fallback lets the controller
+  // work in both the real Express runtime and bare test fixtures.
+  const rawHeader = (req as { headers?: Record<string, string | string[] | undefined> }).headers?.['idempotency-key'];
+  const idempotencyKey = (Array.isArray(rawHeader) ? rawHeader[0] : rawHeader ?? '').toString().trim() || null;
+  if (idempotencyKey) {
+    const cached = checkIdempotency(idempotencyKey, 'createPost', req.user._id.toString());
+    if (cached) { res.status(cached.status).json(cached.body); return; }
+  }
   try {
     const { title, body, tags, attachments } = req.body as {
       title?: string;
@@ -217,6 +234,13 @@ export const createPost = async (req: Request, res: Response): Promise<void> => 
     });
 
     res.status(201).json({ post });
+    // Store the response under the idempotency key (if any) so a
+    // retried request within 60s gets the same payload verbatim. Done
+    // AFTER the success response so the in-memory write doesn't add
+    // measurable latency to the user's request.
+    if (idempotencyKey) {
+      storeIdempotency(idempotencyKey, 'createPost', req.user._id.toString(), 201, { post });
+    }
   } catch (error) {
     communityLog.error(`[post] createPost failed: ${(error as Error).message}`);
     res.status(500).json({ message: 'Server error' });
