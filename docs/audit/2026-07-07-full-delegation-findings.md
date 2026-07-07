@@ -1817,6 +1817,389 @@ Severity scale:
 
 ---
 
+### Subagent 5 — Async delivery findings (deleg_8b0f2cde, 2026-07-07 11:19)
+
+43 additional findings across the same 32-route scope. To avoid ID collision with the prior 5.1–5.24 series, these use the S5-C/S5-H/S5-M/S5-L prefix matching the subagent's own convention.
+
+### S5-C1 — `/train/promote-cross-program` does not verify source `programKnowledgeId` is in a batch the caller can access, nor that `targetBatchIds` are within the caller's scope
+- **File(s):** `apps/backend/src/modules/admin/adminTrain.routes.ts:289-350`
+- **Severity:** CRITICAL
+- **Category:** RBAC, Logic
+- **Bug:** Any admin/ai_moderator/moderator can promote knowledge into ANY other program's batches. No `assertSameProgram` check on either the source row or the target batches. **Cross-tenant write vector.**
+- **Fix:** Run `assertSameProgram(req.user, sourceRow)` and verify every `targetBatchId` is in `req.user.adminPrograms`. Otherwise 403.
+- **Verification:** As admin of program A, attempt to promote a program-B ProgramKnowledge row into program-C's batches — expect 403.
+
+### S5-C2 — `Batch.find({ _id: { $in: batchIds } })` does not validate `batchIds` belong to a non-archived batch — can resurrect knowledge into soft-deleted program's batchId
+- **File(s):** `apps/backend/src/modules/admin/adminTrain.routes.ts:289-350`
+- **Severity:** CRITICAL
+- **Category:** Logic, Validation
+- **Bug:** The upsert still runs against the `validIds` even if those batches are archived or soft-deleted. Combined with C1, an admin can resurrect knowledge into a deleted program's batchId.
+- **Fix:** Add `isActive: true` filter on the Batch.find; reject any `batchId` where the batch is archived.
+- **Verification:** Promote into a soft-deleted batchId — expect 400/404.
+
+### S5-C3 — `runAutoAnswer` reads `req.query.batchId` for `readSetting` scope, but `CommunityPost.find(query)` is unscoped — when a manual run is triggered with `?batchId=X`, posts from ALL programs are processed
+- **File(s):** `apps/backend/src/modules/ai/auto-answer.controller.ts:530`
+- **Severity:** CRITICAL
+- **Category:** Logic, Scope
+- **Bug:** Cross-program AI auto-answering. Manual run with `?batchId=A` triggers LLM calls on every unanswered post in every program.
+- **Fix:** Pass `batchId` from query into the `CommunityPost.find()` filter; same as the cron.
+- **Verification:** As admin of program A, fire `?batchId=A&all=true` — expect ONLY program-A posts to be processed; check the log for "processed N posts" where N ≤ program-A's unanswered count.
+
+### S5-C4 — `banUser` / `unbanUser` / `suspendUser` / `unsuspendUser` / `softDeleteUser` — three sequential async writes (`user.save()` + `ModerationLog.create()` + `logAction()`) with no Mongo transaction
+- **File(s):** `apps/backend/src/modules/moderation/moderation.controller.ts:32-209`
+- **Severity:** CRITICAL
+- **Category:** Race, Code smell
+- **Bug:** Crash between 1 and 2 leaves a banned user with no audit trail; between 2 and 3 leaves a log entry without an AdminLog. Same non-atomic dual-write exists in `reputation.controller.ts:90-108` (user.save → awardToUser → ReputationLog.create).
+- **Fix:** Wrap the three writes in a Mongo session/transaction. If your Mongo supports transactions (replica set), use `withTransaction`. Otherwise, write a compensating inverse operation on the partial-failure path.
+- **Verification:** Inject a fault into the second write (e.g. `ModerationLog.create` always throws); ban should not be persisted; AdminLog should not be created.
+
+### S5-C5 — RBAC mismatch: `requireAdmin` (controller-level) blocks `moderator` and `ai_moderator`; but route uses `router.use(adminOnly)` which permits all three roles
+- **File(s):** `apps/backend/src/modules/moderation/moderation.controller.ts:9-20`; same pattern in `reputation.controller.ts:53, 137, 199`
+- **Severity:** CRITICAL
+- **Category:** RBAC, Logic
+- **Bug:** The route middleware (`adminOnly`) permits `admin`, `moderator`, `ai_moderator`. The controller's `requireAdmin` rejects anything that isn't `'admin'`. **Result: moderators and ai_moderators pass the route middleware, then get 403'd by the controller** — they cannot actually ban/suspend/warn users. **Production-blocker for non-admin moderators.** The comment in `adminOnly` says "allows admin / moderator / ai_moderator" — so the route intent was to permit moderators, but the controller forgot.
+- **Evidence:**
+  ```ts
+  // middleware/admin.ts:13
+  const allowed: UserRole[] = ['admin', 'moderator', 'ai_moderator'];
+  // moderation.controller.ts:14
+  if (role !== 'admin') {
+    res.status(403).json({ message: 'Admin access required' });
+    return null;
+  }
+  ```
+- **Fix:** Either (a) change `requireAdmin` to accept the same 3 roles as `adminOnly` (matches intent), OR (b) change `adminOnly` to admin-only (matches controller). Pick one and apply consistently. Likely (a) — route intent was probably right; controller is the older code.
+- **Verification:** As a moderator, `POST /csfaq/api/moderation/ban -d '{"userId":"...","reason":"test"}'` — expect 200 (currently 403).
+
+### S5-C6 — `AiConfig.findOne({ isActive: true })` returns ANY active doc; with per-program override docs, this can return a program-specific override when the global is intended
+- **File(s):** `apps/backend/src/modules/ai/ai-config.controller.ts:276, 296, 366`
+- **Severity:** CRITICAL
+- **Category:** Logic, Validation
+- **Bug:** `resetAiUsage`, `getAiProviders`, `revealApiKey` all read the wrong doc when a per-program override exists. `revealApiKey` will return the per-program override's decrypted key instead of the global one — admin reads a key that may not actually be the "global" one in use.
+- **Fix:** Pass `batchId: null` (or `programScope: 'global'`) explicitly to the findOne filter, OR make the query `findOne({ isActive: true, scope: 'global' })` if the schema distinguishes.
+- **Verification:** With a per-program override set, `GET /csfaq/api/ai/config/reveal-key` — should return the GLOBAL key, not the program-specific one. Compare both with a direct Mongo query.
+
+### S5-C7 — `getBatchBySlug` loads the ENTIRE batch collection (every active + archived + future program) into memory on every anonymous public call
+- **File(s):** `apps/backend/src/modules/program/batch.controller.ts:115-141`
+- **Severity:** CRITICAL
+- **Category:** Logic, Performance
+- **Bug:** Information disclosure (every program name leaked to anon public callers) + O(N) DoS as the program count grows. No `select` filter, no projection, no `.limit()`. Anon endpoint fires this on every public route load.
+- **Fix:** `Batch.findOne({ slug, isActive: true }).select('_id name slug description').lean()` — or use an index on `slug` with a covering projection.
+- **Verification:** With 1000+ batches in the DB, time a public `/csfaq/api/programs/:slug` call — expect <50ms; previously probably >500ms. Add a `db.batch.find().explain()` and verify it hits the slug index.
+
+### S5-H1 — `bulk-documents` returns `jobId` labelled as `documentId`; double-writes file (disk + base64 in queue payload)
+- **File(s):** `apps/backend/src/modules/admin/adminTrain.routes.ts:194-285`
+- **Severity:** HIGH
+- **Category:** Logic, Performance
+- **Bug:** `documentId: String(new Types.ObjectId())` is a placeholder (line 266) that is overwritten by the worker via jobId lookup. The response (line 275) returns the BULL JOB id labelled as `documentId`. UI consumers that track uploaded documents by id silently break. The `fs.writeFile(filePath, buffer)` AND `addDocumentJob({ bufferBase64: buffer.toString('base64') })` double-write the content (disk + base64) — 2× memory per upload.
+- **Fix:** Either (a) return `jobId` and `documentId` as separate fields (don't conflate), OR (b) write to disk OR queue payload, not both. Prefer (b) — disk is the source of truth; the queue job references the path.
+- **Verification:** POST 1 file; check Mongo for the document row, then check the upload directory — only one copy on disk.
+
+### S5-H2 — `bulk-urls` has no per-admin rate limit; 50 outbound HTTP calls per request × unlimited requests = SSRF amplifier
+- **File(s):** `apps/backend/src/modules/admin/adminTrain.routes.ts:140-188`
+- **Severity:** HIGH
+- **Category:** Logic, Performance
+- **Bug:** A compromised admin token can fire `/train/bulk-urls` 50× in 5 seconds → 2,500 outbound HTTP calls. SSRF amplifier.
+- **Fix:** Add a per-admin limiter (e.g. 10 batches / hour). Also enforce scheme allowlist at validation time (`https?://` only, deny `file:`, `gopher:`, etc.).
+- **Verification:** Fire 5 batch requests in 1 minute — expect 429 from the 6th onward.
+
+### S5-H3 — `ask-ai` anonymous POST `/` accepts 4 files × 10MB = 40MB multipart per request
+- **File(s):** `apps/backend/src/modules/ai/ask-ai.routes.ts:74-102`
+- **Severity:** HIGH
+- **Category:** Performance, DoS
+- **Bug:** `anonAiLimiter` 20/min/IP means 800MB/min/IP admitted before 429. Even ignoring abuse, an honest user with a 40MB upload spikes memory on every Node worker.
+- **Fix:** Reduce anonymous `MAX_FILES=1, MAX_FILE_BYTES=2 * 1024 * 1024` (2MB); keep higher caps for authenticated users. Add per-IP byte-rate limit (e.g. 100MB/min/IP).
+- **Verification:** Anonymous POST with 4×10MB files — expect 400 (file too large) immediately, not 40MB admitted.
+
+### S5-H4 — `authedAiLimiter` keys on IP, not user.id; corporate NAT breaks the quota
+- **File(s):** `apps/backend/src/modules/ai/ask-ai.routes.ts:62-69`
+- **Severity:** HIGH
+- **Category:** Logic, Code smell
+- **Bug:** `keyGenerator: req => auth:${ipKeyGenerator(req.ip)}` keys on IP. Behind a corporate NAT, 50 logged-in users share one 30/min quota.
+- **Fix:** Use `req.user._id.toString()` as the key suffix when authenticated.
+- **Verification:** Two logged-in users from the same IP, each fire 25 requests — expect both to succeed (currently: second user gets 429 from hit 31).
+
+### S5-H5 — `runAutoAnswerInternal` reads `MIN_POST_AGE_HOURS` / `BATCH_SIZE` settings but has no NaN guard
+- **File(s):** `apps/backend/src/modules/ai/auto-answer.controller.ts:610`
+- **Severity:** HIGH
+- **Category:** Logic
+- **Bug:** If the DB stores the setting as `NaN` (or non-numeric string from a UI typo), `new Date(Date.now() - NaN * 60 * 60 * 1000)` is `Invalid Date`, the Mongo `{ createdAt: { $lte: InvalidDate } }` query returns ALL docs, and the cron drains the entire unanswered queue. **Same NaN-guard gap already flagged in redesign-plan §2.1 row 8 but not fixed in this cron.**
+- **Fix:** Wrap in `Number.isFinite()` check; coerce to default if NaN. Same fix pattern as the v1.68 community scheduler NaN guard.
+- **Verification:** Manually set `autoAnswerMinAgeHours` to a non-numeric string in Mongo; wait for cron tick; expect the cron to use the default (2 hours) and process only posts older than 2 hours.
+
+### S5-H6 — `processPost` and `approveEditAutoAnswer` still use mutate-then-save; TOCTOU race
+- **File(s):** `apps/backend/src/modules/ai/auto-answer.controller.ts:220-346`, `apps/backend/src/modules/admin/adminAutoAnswerReview.controller.ts:113`
+- **Severity:** HIGH
+- **Category:** Race
+- **Bug:** Two concurrent cron workers can pass the `attempts >= 3` skip check (line 233-238), both increment, both call `findBestAnswer`, both `updateOne` with last-writer-wins. The H3 fix (commit `60c1af0`) targeted `resolvePost`; `processPost` and the new `approveEditAutoAnswer` still use mutate-then-save.
+- **Fix:** Same atomic `findOneAndUpdate({ _id, aiAnswerAttempts: { $lt: 3 } }, { $inc: { aiAnswerAttempts: 1 } })` lock as H3 used.
+- **Verification:** Synthetic: fire `processPost` from cron and `approveEditAutoAnswer` from admin route within 100ms — expect ONE pipeline run.
+
+### S5-H7 — `ai-promotion` AI validation grounding reads `FAQ.find({ status: 'approved' })` across ALL programs
+- **File(s):** `apps/backend/src/modules/ai/ai-promotion.controller.ts:80-93`
+- **Severity:** HIGH
+- **Category:** Logic, Scope
+- **Bug:** No `batchId` filter. Related-posts query on line 85-92 also cross-program (`tags: $in: post.tags` with no batchId scope). Cross-program data leak during AI training context.
+- **Fix:** Add `batchId: { $in: req.user.adminPrograms }` filter (or single batchId) to the find call.
+- **Verification:** Promote a post from program A — expect grounding context to only contain program-A FAQs.
+
+### S5-H8 — `ai-promotion.controller.ts:160-192` `post.lifecycle.aiGeneratedFaq = {...}` then `post.save()` — non-atomic; concurrent calls overwrite each other
+- **File(s):** `apps/backend/src/modules/ai/ai-promotion.controller.ts:160-192`
+- **Severity:** HIGH
+- **Category:** Race
+- **Bug:** Two concurrent `runCommunityPromotionReview` calls on the same post (e.g., user retries, manual + cron overlap) both pass the `lifecycle.aiGeneratedFaq?.question` check (line 69), both call `client.chat`, both save; second save overwrites the first's refined answer.
+- **Fix:** Use atomic `findOneAndUpdate({ _id, 'lifecycle.aiGeneratedFaq.question': { $exists: false } }, { $set: {...} })`.
+- **Verification:** Synthetic double-fire — expect only one `aiGeneratedFaq` write, second call returns null from findOneAndUpdate.
+
+### S5-H9 — Hard-coded `ObjectId('000000000000000000000000')` as `changedBy` for AI/system actions; no audit trail of provider/model/version
+- **File(s):** `apps/backend/src/modules/ai/auto-answer.controller.ts:313, 313-317`, `ai-promotion.controller.ts:178, 186`
+- **Severity:** HIGH
+- **Category:** Doc gap, Code smell
+- **Bug:** Audit trail cannot trace which AI provider/model/version or which cron run produced the action.
+- **Fix:** Add a `systemActions` user/system actor with metadata: `{ actor: 'system', provider: cfg.provider, model: cfg.model, cronRun: 'v1.71.0-2026-07-07T11:30' }`.
+- **Verification:** Inspect a recent auto-answer post's `lifecycle.statusHistory` — see the provider/model fields populated.
+
+### S5-H10 — `getUsers`, `getAdminFAQs`, `getCommunityPosts`, `getModerationLogs` have `parseInt(req.query.limit)` with no upper cap → full-table dump
+- **File(s):** `apps/backend/src/modules/admin/admin.controller.ts:218-243, 248-249, 565-567`, `apps/backend/src/modules/moderation/moderation.controller.ts:217`
+- **Severity:** HIGH
+- **Category:** Validation, Logic
+- **Bug:** Admin (or attacker with stolen admin JWT) can request `?limit=9999999` and dump the entire users collection in one HTTP response (auth bypass + admin compromise amplification).
+- **Fix:** Cap with `Math.min(50, parseInt(req.query.limit))` (matches `getModerationLogs` pattern).
+- **Verification:** `?limit=9999999` — expect 50 results, not all.
+
+### S5-H11 — `getCommunityPosts` builds `{ $or: [{ title: { $regex: search, $options: 'i' } }, ... } }` WITHOUT `escapeRegex`
+- **File(s):** `apps/backend/src/modules/admin/admin.controller.ts:563-619`
+- **Severity:** HIGH
+- **Category:** Validation, ReDoS
+- **Bug:** Admin-controlled regex special characters cause ReDoS. The `escapeRegex` helper exists in this same file (line 214-216) and IS used in `getUsers`/`getAdminFAQs` but NOT in `getCommunityPosts`.
+- **Fix:** Wrap search input with `escapeRegex`.
+- **Verification:** `?search=$(printf 'a%.0s' {1..1000})[a-z]*` — expect fast response (with escapeRegex) vs. CPU spike.
+
+### S5-H12 — `deleteCommunityPost` has NO `assertSameProgram` check; cross-program hard delete
+- **File(s):** `apps/backend/src/modules/admin/admin.controller.ts:622-634`
+- **Severity:** HIGH
+- **Category:** RBAC, Scope
+- **Bug:** Admin from program A can hard-delete any post from program B. Compare with `approveFAQ`/`rejectFAQ`/`updateFAQ`/`deleteFAQ` (lines 286-405) which all gate on `assertSameProgram`. Inconsistency.
+- **Fix:** Add `assertSameProgram(req.user, post)` check before `findByIdAndDelete`.
+- **Verification:** Admin of program A attempts to delete a post in batch of program B — expect 403/404.
+
+### S5-H13 — `awardPoints` in-memory `user.points = ...; user.reputation = ...; user.tier = ...; user.save()` — concurrent admin awards race
+- **File(s):** `apps/backend/src/modules/moderation/reputation.controller.ts:84-90`
+- **Severity:** HIGH
+- **Category:** Race
+- **Bug:** Two concurrent admin awards on the same user both load, both compute, last save wins. `User.points` ends up out of sync with the actual `ReputationLog` history. **Note: this is the SAME controller that subagent 5 reported as 5.14; the inline-applied version was sharper about the dual-write with `awardToUser`, this version is sharper about the lost-update race.**
+- **Fix:** Atomic `findOneAndUpdate({ _id }, { $inc: { points: delta }, ... })`.
+- **Verification:** Synthetic double-fire of `awardPoints` for `+10` and `+20` — expect `User.points` to be +30, not +20.
+
+### S5-H14 — `softDeleteUser` mangles email to `[deleted_${userId}]_${user.email}` — non-reversible
+- **File(s):** `apps/backend/src/modules/moderation/moderation.controller.ts:194`
+- **Severity:** HIGH
+- **Category:** Logic
+- **Bug:** The user can never be re-registered with their original email even after manual undelete, because the unique-index now points at the mangled string.
+- **Fix:** Either (a) move the email to a `deletedEmails` array (reversible), OR (b) don't mangle — set `isDeleted=true` and exclude from login lookups (already done). The email mangling is over-engineering.
+- **Verification:** Soft-delete then un-delete a user; attempt to re-register with the original email — expect 409 (currently: blocked because mangled email still has unique-index entry).
+
+### S5-H15 — `deleteBatch` → `cascadeDeleteProgram` — sequential per-collection deletes, no transaction
+- **File(s):** `apps/backend/src/modules/program/batch.controller.ts:305-328`
+- **Severity:** HIGH
+- **Category:** Race, Data loss
+- **Bug:** Partial failure leaves the program half-deleted with orphaned FAQs, comments, mentors, projects, ProgramKnowledge rows. No rollback path.
+- **Fix:** Wrap in `withTransaction` if Mongo supports it; otherwise maintain a "deletion-in-progress" flag and a sweeper cron for orphans.
+- **Verification:** Inject a fault mid-cascade; the program should remain in `isActive=true` state, no partial deletes committed.
+
+### S5-H16 — `getModerationLogs` lets any admin scope to ANY `batchId`
+- **File(s):** `apps/backend/src/modules/moderation/moderation.controller.ts:212-241`
+- **Severity:** HIGH
+- **Category:** RBAC, Logic
+- **Bug:** `withProgramScope(filter, req.query.batchId)` lets any admin specify ANY `batchId` in the query to scope to ANY program, not just their own. Compare `getReports` (admin.controller.ts:446-476) which never uses `withProgramScope` at all — pure cross-program.
+- **Fix:** Validate `batchId` is in `req.user.adminPrograms` before applying; otherwise ignore or 403.
+- **Verification:** Admin of program A queries `?batchId=<program-B-id>` — expect 403 (currently: returns program-B logs).
+
+### S5-H17 — `validateModelForProvider` uses substring matchers (`includes('claude')`, etc.); trivial bypass
+- **File(s):** `apps/backend/src/modules/ai/ai-config.controller.ts:387-408`
+- **Severity:** HIGH
+- **Category:** Validation, Logic
+- **Bug:** A model name like `gpt-claude-minimax-trash-injection-xss` passes all five validators. Trivial bypass for any admin attempting to set a non-claude model against anthropic.
+- **Fix:** Use exact-match against a closed set per provider; OR anchored regex (`^(claude|gpt|minimax)(-|$)`).
+- **Verification:** Set model to `claude-gpt-minimax-trash-injection` against anthropic — expect 400.
+
+### S5-H18 — `approveEditAutoAnswer` updates `pendingReviews: false` — schema drift risk
+- **File(s):** `apps/backend/src/modules/admin/adminAutoAnswerReview.controller.ts:113-128`
+- **Severity:** HIGH
+- **Category:** Schema drift, Code smell
+- **Bug:** `CommunityPost` schema field for "needs review" was renamed to `pendingReviews` from `pendingReviews` only in certain migration branches — running this against an older schema silently no-ops the field via Mongo silent-ignore.
+- **Fix:** Verify the current schema field name in `apps/backend/src/modules/community/community-post.model.ts`; align this controller.
+- **Verification:** Inspect a post after approval — `pendingReviews` should be `false`.
+
+### S5-M1 — `/preview-context/:postId` admin from program A can preview any post from program B
+- **File(s):** `apps/backend/src/modules/ai/ask-ai.routes.ts:115-154`
+- **Severity:** MEDIUM
+- **Category:** RBAC, Scope
+- **Bug:** No `batchId` cross-check. Exposes raw post content + persisted `aiContext` snapshot to cross-program admins.
+- **Fix:** Add `assertSameProgram(req.user, post)` check before fetching context.
+- **Verification:** Admin of program A previews a post from program B — expect 403.
+
+### S5-M2 — `program-knowledge` $text search escapes `-`, `!`, `"` but not `*`, `(`, `)`, `\`, `<`, `>`, `;`
+- **File(s):** `apps/backend/src/modules/admin/adminTrain.routes.ts:63-107`
+- **Severity:** MEDIUM
+- **Category:** Validation, XSS-adjacent
+- **Bug:** Mongo `$text` operators like `*` for prefix and parens for grouping still accepted. Comment claims "no injection vectors" but parens can break the parser.
+- **Fix:** Extend the strip regex to also remove `*`, `(`, `)`, `\`, `<`, `>`, `;`.
+- **Verification:** Search for `(test)` — expect plain-text search, not operator parsing.
+
+### S5-M3 — `findOneAndUpdate({ batchId, question }, { $setOnInsert: {...} }, { upsert: true })` returns source row's `_id` when existing match found; caller can't tell insert-vs-duplicate
+- **File(s):** `apps/backend/src/modules/admin/adminTrain.routes.ts:317-336`
+- **Severity:** MEDIUM
+- **Category:** Logic, Code smell
+- **Bug:** Caller cannot tell "this was a duplicate" from "this was a fresh insert" without comparing ids externally.
+- **Fix:** Inspect the result's `lastErrorObject.upserted` flag OR return a `wasDuplicate: boolean` field.
+- **Verification:** Promote the same row twice — expect `wasDuplicate: true` on the second call.
+
+### S5-M4 — `runAutoAnswer` hard-codes manual "all" run at 200 posts; sequential LLM calls block the event loop
+- **File(s):** `apps/backend/src/modules/ai/auto-answer.controller.ts:503-574`
+- **Severity:** MEDIUM
+- **Category:** Performance, UX
+- **Bug:** An admin re-running with `?all=true` processes up to 200 sequentially with no concurrency control; LLM calls block the event loop.
+- **Fix:** Use `Promise.allSettled` with concurrency cap of e.g. 5; fire-and-forget to a worker queue.
+- **Verification:** `?all=true` returns within 5s with a 202 + jobId (currently blocks until all 200 done).
+
+### S5-M5 — `autoAwardBadges` reads `user.points < badge.pointsRequired` against stale value
+- **File(s):** `apps/backend/src/modules/moderation/reputation.controller.ts:11-48`
+- **Severity:** MEDIUM
+- **Category:** Race, Logic
+- **Bug:** Between `User.findById(userId)` (line 13) and `findOneAndUpdate(...)` (line 31), the user's points can be deducted, but the badge-award filter was evaluated against the stale value. Awards badge for points no longer held.
+- **Fix:** Pass `badge.pointsRequired` into the filter: `findOneAndUpdate({ _id: userId, points: { $gte: badge.pointsRequired }, ... })`.
+- **Verification:** Set user to exactly 100 points, threshold 100, manually deduct to 99 BEFORE autoAwardBadges runs — expect no badge awarded.
+
+### S5-M6 — `approveFAQ` / `rejectFAQ` — three sequential non-atomic side effects on a single FAQ state change
+- **File(s):** `apps/backend/src/modules/admin/admin.controller.ts:286-321`
+- **Severity:** MEDIUM
+- **Category:** Race, Code smell
+- **Bug:** `await invalidateCache()` then `invalidatePublicCaches()` then `logAction` — three sequential non-atomic side effects on a single FAQ state change.
+- **Fix:** Use a single transactional helper or `Promise.all([...])` for the cache invalidations.
+- **Verification:** Inject a fault in `invalidateCache` — expect the FAQ state to NOT be persisted (rollback), or all three to be atomic.
+
+### S5-M7 — `updateFAQ` awaits `generateEmbedding(...)` inline with no timeout
+- **File(s):** `apps/backend/src/modules/admin/admin.controller.ts:324-383`
+- **Severity:** MEDIUM
+- **Category:** Performance, UX
+- **Bug:** Embedding service can stall the response indefinitely on a cold provider.
+- **Fix:** Move embedding to a fire-and-forget background job (queue + worker), or add a 5s timeout with a "embedding pending" state.
+- **Verification:** Mock the embedding service to hang — expect the response within 6s with a clear message.
+
+### S5-M8 — `queue.controller.ts:23` returns raw exception message including connection strings from Mongo network errors
+- **File(s):** `apps/backend/src/modules/admin/queue.controller.ts:23`
+- **Severity:** MEDIUM
+- **Category:** Code smell, Info disclosure
+- **Bug:** `res.json({ ..., error: (err as Error).message })` includes the raw exception message to an admin client (only-admin, but still surfaces internal details like connection strings from Mongo network errors).
+- **Fix:** Sanitize the error message; log full details server-side; return a generic message to the client.
+- **Verification:** Force a Mongo connection error; client response should NOT contain the connection string.
+
+### S5-M9 — `POST /community/auto-answer` accepts `?post_id=` and `?all=true` from any admin/ai_moderator/moderator; no audit log of who triggered the manual run
+- **File(s):** `apps/backend/src/modules/admin/admin-auto-answer.routes.ts:38`
+- **Severity:** MEDIUM
+- **Category:** Doc gap, Audit
+- **Bug:** Compare `runScheduledAutoAnswer` which logs the cron name. The manual run has no actor log.
+- **Fix:** Add an AdminLog entry: `{ action: 'manual_auto_answer', actor: req.user._id, params: { post_id, all } }`.
+- **Verification:** Trigger manual run, check AdminLog collection for the entry.
+
+### S5-M10 — `GET /:id` on batch routes has NO `protect` middleware and NO rate limit
+- **File(s):** `apps/backend/src/modules/program/batch.routes.ts:42`
+- **Severity:** MEDIUM
+- **Category:** Validation
+- **Bug:** `Batch.findById` on a malformed id throws a CastError → 500. ObjectId is unguessable in practice but the surface is open.
+- **Fix:** Add `validateObjectId('id')` middleware (returns 400) + add a basic rate limiter for anon traffic.
+- **Verification:** `GET /csfaq/api/batches/notanid` — expect 400, not 500.
+
+### S5-M11 — `createMentor` leaks the full error object (including Mongoose validation paths) to the admin client
+- **File(s):** `apps/backend/src/modules/admin/admin-mentor.controller.ts:79-83, 99`
+- **Severity:** MEDIUM
+- **Category:** Info disclosure, Validation
+- **Bug:** On email uniqueness conflict the Mongoose error bubbles to line 99's catch, which returns `{ message: 'Error creating mentor', error }` — leaks the full error object.
+- **Fix:** Catch specific MongoServerError codes (11000 for duplicate key) and return a clean message; log full details server-side.
+- **Verification:** Force a duplicate-email insert; client response should NOT contain "E11000" or the Mongoose validation paths.
+
+### S5-M12 — `setDefaultBatch` has a race window between `updateMany` (clear all defaults) and `findByIdAndUpdate` (set new default)
+- **File(s):** `apps/backend/src/modules/program/batch.controller.ts:148-168`
+- **Severity:** MEDIUM
+- **Category:** Race
+- **Bug:** A concurrent `setDefaultBatch` from admin B during admin A's call can briefly flip the flag onto batch B while A's updateMany is still running. Partial unique index `{ isDefault: 1 }` prevents final state inconsistency, but a window exists.
+- **Fix:** Wrap both writes in a transaction; OR use a single `findOneAndUpdate({ _id: newBatchId }, { $set: { isDefault: true } })` and a pre-clear that's idempotent.
+- **Verification:** Synthetic double-fire; expect only one batch to have `isDefault=true` at any point.
+
+### S5-L1 — `router.use(adminOnly)` applied at mount time but no route ever calls `setContextBatchId`; `req.programContext.batchId` is undefined everywhere
+- **File(s):** `apps/backend/src/modules/admin/admin.routes.ts:75`
+- **Severity:** LOW
+- **Category:** Code smell, Scope
+- **Bug:** `assertSameProgram` checks (admin.controller.ts:292, 311, 339, 393) succeed/fail inconsistently depending on `assertSameProgram`'s strict-by-default semantics. No route ever sets `req.programContext.batchId`, so downstream controllers operate on an undefined context.
+- **Fix:** Add `setContextBatchId` middleware that reads `req.query.batchId` and attaches `req.programContext`. Apply to all admin routes.
+- **Verification:** All admin routes that use `assertSameProgram` should pass when `?batchId` is in the admin's program scope, fail otherwise.
+
+### S5-L2 — `ai-promotion.controller.ts` uses dynamic `await import()` inside hot paths; module re-resolved on every call
+- **File(s):** `apps/backend/src/modules/ai/ai-promotion.controller.ts:75, 153`
+- **Severity:** LOW
+- **Category:** Performance
+- **Bug:** `await import('./ai-client.service.js')` and `await import('../../utils/ai/duplicateDetector.js')` inside hot paths — module is re-resolved on every call.
+- **Fix:** Use static `import` at the top of the file.
+- **Verification:** Profile the route — first-call overhead should be one-time, not per-request.
+
+### S5-L3 — `runScheduledAutoAnswer` and `stopAutoAnswerScheduler` are deprecated stubs kept for backward compat per Phase 3 R12; no `@deprecated` JSDoc tag
+- **File(s):** `apps/backend/src/modules/ai/auto-answer.controller.ts:589-605`
+- **Severity:** LOW
+- **Category:** Doc gap, Code smell
+- **Bug:** Public exports with no `@deprecated` JSDoc tag, and there's no ESLint rule to surface them.
+- **Fix:** Add `@deprecated` JSDoc tags; add an ESLint rule (`@typescript-eslint/no-deprecated`).
+- **Verification:** `eslint .` reports the deprecated symbols.
+
+### S5-L4 — `getAutoAnswerQueuePaginated` filter `deletedAt: null` requires the field to exist on `CommunityPost`
+- **File(s):** `apps/backend/src/modules/admin/adminAutoAnswerReview.controller.ts:222-262`
+- **Severity:** LOW
+- **Category:** Schema drift
+- **Bug:** If the schema doesn't have `deletedAt`, Mongoose silently filters nothing (the predicate is unknown).
+- **Fix:** Check `CommunityPost.schema.paths.deletedAt` exists; otherwise remove the filter and add a TODO.
+- **Verification:** Inspect the schema; confirm `deletedAt` field exists.
+
+### S5-L5 — `getModerationLogs` pagination max is 50 but no `hasMore` flag returned
+- **File(s):** `apps/backend/src/modules/moderation/moderation.controller.ts:212-241`
+- **Severity:** LOW
+- **Category:** UX inconsistency
+- **Bug:** Caller must compute `skip + logs.length < total` themselves. Compare admin.controller.ts:497 where `hasMore` is present.
+- **Fix:** Add `hasMore: skip + logs.length < total` to the response.
+- **Verification:** Page through logs — UI should know when to stop fetching.
+
+### S5-L6 — `getReports` has hard `limit(500)` cap on both FAQ and SearchLog queries with no pagination
+- **File(s):** `apps/backend/src/modules/admin/admin.controller.ts:457-460`
+- **Severity:** LOW
+- **Category:** UX, Logic
+- **Bug:** Admins requesting a wide date range silently get only the latest 500 rows, with no `total`/`hasMore`.
+- **Fix:** Add `?page&limit`; respect `total` from `countDocuments`.
+- **Verification:** Request a wide date range — response should include `total` and `hasMore`.
+
+### Subagent 5 — async high-risk route inventory (top 10 — first to fix)
+
+| Rank | File | Endpoint(s) | Why |
+|------|------|-------------|-----|
+| 1 | `adminTrain.routes.ts` | `POST /train/promote-cross-program` | No source/target scope check. Cross-tenant write. |
+| 2 | `auto-answer.controller.ts` | `runAutoAnswer` (manual + scheduled) | Unscoped `CommunityPost.find` ignores `?batchId=`; NaN guard missing on settings. |
+| 3 | `moderation.controller.ts` + `reputation.controller.ts` | `ban/suspend/warn/award/badge` | Non-atomic 3-write dual-write; controller `requireAdmin` blocks moderators that route middleware permits. |
+| 4 | `ai-config.controller.ts` | `resetAiUsage`, `getAiProviders`, `revealApiKey` | `findOne({isActive:true})` returns per-program override instead of global. |
+| 5 | `batch.controller.ts` | `getBatchBySlug` | Loads entire batch collection to do slug match; info disclosure to anon public. |
+| 6 | `admin.controller.ts` | `getUsers`, `getAdminFAQs`, `getCommunityPosts` | `parseInt(limit)` no cap → full-table dump; `getCommunityPosts` `$regex` without `escapeRegex` → ReDoS. |
+| 7 | `ask-ai.routes.ts` | `POST /` | 40MB anonymous multipart admitted; `authedAiLimiter` keyed on IP. |
+| 8 | `ai-promotion.controller.ts` | `runCommunityPromotionReview` | AI grounding reads cross-program FAQs; non-atomic lifecycle.aiGeneratedFaq write. |
+| 9 | `admin.controller.ts` `deleteCommunityPost` | `DELETE /admin/community/:id` | No `assertSameProgram` — cross-program hard delete. |
+| 10 | `adminTrain.routes.ts` `bulk-documents` | `POST /train/bulk-documents` | `documentId` returned is actually `jobId`; double-write (disk + base64). |
+
+### Out of scope (forwarded from async delivery)
+- `admin-welcome.controller.ts` (1327 LOC) — not read; suspect race patterns in welcome package builder.
+- `onboarding-resources.controller.ts` (890 LOC) — not read; multi-resource onboarding CMS recent commit, likely analogous audit surface.
+- `admin.config.controller.ts` (219 LOC) — not read; runtime config writes by admin, no passphrase challenge (Phase 2 deferred per comment).
+- `admin-project.controller.ts` (108 LOC) — not read; projects CRUD.
+- `program/feature-flag.controller.ts`, `app-settings.controller.ts`, `welcome.controller.ts` — not read.
+- `program/cascade-delete.service.ts` orphan coverage (already in redesign-plan §2.1 row 5).
+
+---
+
 ### Subagent 5 Summary (re-dispatch — 24 additional findings from a second pass through the same 32-route scope)
 - **CRITICAL: 1** (5.1 suspendUserSchema field shape mismatch — distinct from sibling C5-1; this is the broken-route code path, that is the upload-ordering concern)
 - **HIGH: 4** (5.2 admin note leaked in post body, 5.3 askAiAgain cooldown trap, 5.10 stdout credential leak + per-request SDK, 5.14 dual-write partial in awardPoints)
@@ -1845,40 +2228,50 @@ Findings 5.9 (M4-3 cross-cutting), 5.6 (same anti-pattern as Subagent 4 M4-1/4-2
 
 ## Consolidated Summary (filled by judge)
 
-### Counts (updated 2026-07-07 11:32 after Subagent 2 re-dispatch landed)
+### Counts (updated 2026-07-07 11:35 after Subagent 5 async delivery landed)
 | Severity | Subagent 1 | Subagent 2 | Subagent 3 | Subagent 4 | Subagent 5 | TOTAL |
 |---|---|---|---|---|---|---|
-| CRITICAL | 0 | 0 | 1 (S3-01 AdminLogin routing broken) | 0 | 1 (5.1 suspendUserSchema broken) | **2** |
-| HIGH     | 1 | 4 (H2-1, H2-3, S2-1, S2-6) — H2-2 retracted as false positive | 1 (S3-02) | 2 (H4-1, H4-2) | 4 (5.2, 5.3, 5.10, 5.14) | **12** |
-| MEDIUM   | 4 | 13 (M2-1..M2-5 + S2-2, S2-3, S2-4, 2-A, 2-B, 2-C, 2-D, 2-E) | 5 | 5 | 9 | **36** |
-| LOW      | 6 | 11 (L2-1..L2-3 + S2-5, S2-7, S2-8, S2-9, S2-10 + 2-F, 2-G, 2-H) | 5 | 6 | 10 | **38** |
-| **TOTAL** | **11** | **28** | **12** | **13** | **24** | **88** |
+| CRITICAL | 0 | 0 | 1 (S3-01 AdminLogin routing broken) | 0 | **8** (5.1 suspendUserSchema broken + S5-C1..C7 cross-tenant/RBAC) | **9** |
+| HIGH     | 1 | 4 (H2-1, H2-3, S2-1, S2-6) — H2-2 retracted | 1 (S3-02) | 2 (H4-1, H4-2) | **22** (5.2, 5.3, 5.10, 5.14 + S5-H1..H18) | **30** |
+| MEDIUM   | 4 | 13 (M2-1..M2-5 + S2-2, S2-3, S2-4, 2-A..2-E) | 5 | 5 | **21** (5.4, 5.5, 5.6, 5.7, 5.13, 5.17, 5.18, 5.20, 5.23 + S5-M1..M12) | **48** |
+| LOW      | 6 | 11 (L2-1..L2-3 + S2-5, S2-7..S2-10 + 2-F..2-H) | 5 | 6 | **16** (5.8, 5.9, 5.11, 5.12, 5.15, 5.16, 5.19, 5.21, 5.22, 5.24 + S5-L1..L6) | **44** |
+| **TOTAL** | **11** | **28** | **12** | **13** | **67** | **131** |
 
-### Top 10 priorities (judge-curated)
+### Top 11 priorities (judge-curated)
 
-These are ordered by severity × blast radius. Fixes 1-3 are unblockers; fixes 4-7 are correctness; fixes 8-10 are hardening.
+These are ordered by severity × blast radius. Fixes 1-7 are unblockers; fixes 8-9 are correctness; fixes 10-11 are hardening.
 
-1. **5.1 (CRITICAL) — `suspendUserSchema` field shape mismatch** (`apps/backend/src/utils/auth/validation.ts:145-149`): the schema requires `days: number` but the controller reads `duration: string`. **Every** call to `POST /csfaq/api/moderation/suspend` returns 400 immediately. Admins currently cannot suspend abusive users through the normal flow. Fix: extend `suspendUserSchema` with a `duration: z.string().regex(/^[0-9]+(h|d)$/)` (or change the controller to coerce), then add a unit test. **Severity: production-blocker for moderation.**
+1. **S5-C5 (CRITICAL) — `requireAdmin` blocks moderators despite route middleware permitting them** (`apps/backend/src/modules/moderation/moderation.controller.ts:9-20`): the `adminOnly` middleware accepts `admin`/`moderator`/`ai_moderator`, but the controller's `requireAdmin` only accepts `admin`. **Result: moderators pass the route check, then get 403'd by the controller.** Moderators and ai_moderators cannot actually ban/suspend/warn users. **Production-blocker for non-admin moderators** — this is a feature that's wired up everywhere but works for no one. Fix: change `requireAdmin` to accept the same 3 roles (route intent was probably right; controller is older code).
 
-2. **S3-01 (CRITICAL) — AdminLogin routing broken** (`apps/frontend/src/admin/pages/AdminLogin.tsx`): per subagent 3, anyone logged out hitting `/admin/*` now bounces forever — likely the recent commit `00a2a1f8` removed the lazy `import('../admin/pages/AdminLogin')` route registration. Fix: re-add the lazy import. **Severity: blocks admin access for every logged-out admin.**
+2. **5.1 (CRITICAL) — `suspendUserSchema` field shape mismatch** (`apps/backend/src/utils/auth/validation.ts:145-149`): the schema requires `days: number` but the controller reads `duration: string`. **Every** call to `POST /csfaq/api/moderation/suspend` returns 400 immediately. Admins currently cannot suspend abusive users through the normal flow. Fix: extend `suspendUserSchema` with a `duration: z.string().regex(/^[0-9]+(h|d)$/)` (or change the controller to coerce), then add a unit test. **Severity: production-blocker for moderation.** *Note: this is the same bug class as S5-C5 — schema/controller field drift. After fixing S5-C5 + 5.1, add an ESLint rule that catches `controller_body_fields ⊄ schema_fields`.*
 
-3. **H2-2 (HIGH) — CommentNode upvote rollback typo** (`apps/frontend/src/components/community/CommentNode.tsx:145`): the H11 fix references `previousUpvote` (singular) but the captured variable is `previousUpvotes`. When upvote API fails, the `.catch()` throws a `ReferenceError`, swallowing rollback and leaving the upvote "stuck on". **Severity: regression introduced by the fix itself; affects every community comment.**
+3. **S3-01 (CRITICAL) — AdminLogin routing broken** (`apps/frontend/src/admin/pages/AdminLogin.tsx`): per subagent 3, anyone logged out hitting `/admin/*` now bounces forever — likely the recent commit `00a2a1f8` removed the lazy `import('../admin/pages/AdminLogin')` route registration. Fix: re-add the lazy import. **Severity: blocks admin access for every logged-out admin.**
 
-4. **5.2 (HIGH) — `[ADMIN NOTE]` leaks into post body** (`apps/backend/src/services/autoAnswer.ts:524-553`): `rerunWithContext` mutates `post.body` with `[ADMIN NOTE]` augmentation, runs `processPost`, then strips it back via `post.body.split(...)[0]`. The save + strip has no error handling — a transient DB error during strip leaves the admin's note visible to the user permanently. **Severity: data corruption visible to end users.**
+4. **S5-C1 (CRITICAL) — `/train/promote-cross-program` has no scope check on source or target batches** (`apps/backend/src/modules/admin/adminTrain.routes.ts:289-350`): any admin/ai_moderator/moderator can promote knowledge into ANY other program's batches. Cross-tenant write vector. Fix: run `assertSameProgram(req.user, sourceRow)` and verify every `targetBatchId` is in `req.user.adminPrograms`.
 
-5. **5.10 (HIGH) — `askOrientationQuestion` stdout credential leak** (`apps/backend/src/modules/program/welcome.controller.ts:askOrientationQuestion` per subagent 5): constructs a new OpenAI SDK per request, logs `GROK/GROQ loaded: !!apiKey` to stdout. Per-request SDK cost + key presence in logs is a credential-leak surface. **Severity: PII/key in logs.**
+5. **S5-C3 (CRITICAL) — `runAutoAnswer` with `?batchId=X` processes posts from ALL programs** (`apps/backend/src/modules/ai/auto-answer.controller.ts:530`): `CommunityPost.find(query)` ignores the query batchId and processes every unanswered post. Cross-program AI auto-answering on manual trigger. Fix: pass `batchId` into the find() filter.
 
-6. **S2-6 (HIGH) — `POST /community/:id/resolve` accepts ANY authenticated user (RBAC gap, client-only gate)** (`apps/backend/src/modules/community/community.routes.ts:83`): the frontend restricts the "Resolve" button to admin/moderator/expert, but the backend route has only `protect` middleware — no `authorize(...)`. A regular `user` who crafts a PATCH with `{"answer":"..."}` resolves any post in their program, including posts they didn't author. **Same bug pattern as the original H6 (CreatePostDialog no server-auth)** — client-only gate, missing server enforcement. Fix: tighten route to `protect, authorize('admin','moderator','expert')`. Async delivery added this finding 2026-07-07 11:30.
+6. **S5-C6 (CRITICAL) — `AiConfig.findOne({ isActive: true })` returns per-program override when global is intended** (`apps/backend/src/modules/ai/ai-config.controller.ts:276, 296, 366`): `revealApiKey` returns the per-program override's decrypted key instead of the global one. Admin reads a key that's not actually in use. Fix: explicit `scope: 'global'` filter or `batchId: null`.
 
-7. **5.3 + H5-3 (HIGH) — autoAnswer cooldown gate logic** (`apps/backend/src/services/autoAnswer.ts:readPriorResult`): two reports in agreement — `escalated` is mapped to `ask_human` decision, AND the function never inspects `aiAnswerReviewedAt`/`By`, so an admin "ask-ai-again" within the cooldown window silently returns the cached answer with no log line. Subagent 5's version is sharper. **Severity: admin re-runs produce no work, no observability.**
+7. **S5-C7 (CRITICAL) — `getBatchBySlug` loads ENTIRE batch collection into memory on every anonymous public call** (`apps/backend/src/modules/program/batch.controller.ts:115-141`): info disclosure (every program name leaks to anon public) + O(N) DoS as the program count grows. Fix: `Batch.findOne({ slug, isActive: true }).select(...).lean()`.
 
-8. **5.14 (HIGH) — Reputation `awardPoints` dual-write partial** (`apps/backend/src/modules/moderation/reputation.controller.ts:awardPoints`): updates `User.points` globally THEN calls `awardToUser` (per-program write). If per-program write throws, the global already moved. **Severity: user reputation inconsistency, unfixable without a rollback.**
+8. **5.2 (HIGH) — `[ADMIN NOTE]` leaks into post body** (`apps/backend/src/services/autoAnswer.ts:524-553`): `rerunWithContext` mutates `post.body` with `[ADMIN NOTE]` augmentation, runs `processPost`, then strips it back via `post.body.split(...)[0]`. The save + strip has no error handling — a transient DB error during strip leaves the admin's note visible to the user permanently. **Severity: data corruption visible to end users.**
 
-9. **H4-1 + H4-2 (HIGH) — `POST /auth/refresh` no rate limit + no Zod** (`apps/backend/src/modules/auth/auth.controller.ts:622-681`): the refresh endpoint is the natural brute-force target and has neither. Length is unbounded — 10MB strings hit `JWT.verify`. **Severity: token-reuse surface + memory pressure.**
+9. **S5-H10 (HIGH) — `getUsers`, `getAdminFAQs`, `getCommunityPosts`, `getModerationLogs` have `parseInt(limit)` with no upper cap → full-table dump** (`apps/backend/src/modules/admin/admin.controller.ts:218-243, 248-249, 565-567`, `moderation.controller.ts:217`): admin (or attacker with stolen admin JWT) can request `?limit=9999999` and dump the entire users collection in one HTTP response. Fix: cap with `Math.min(50, parseInt(req.query.limit))`.
 
-10. **S1 + Subagent 1.1 (HIGH) — `SpurtiChip` uses `user?.id` instead of `user?._id`** (`apps/frontend/src/components/.../SpurtiChip.tsx` per subagent 1): breaks Spurti Points UI for every authenticated user. One-character fix but high blast-radius (GuidedTour + GoldenTicket features both depend on it). **Severity: full feature broken.**
+10. **5.10 (HIGH) — `askOrientationQuestion` stdout credential leak** (`apps/backend/src/modules/program/welcome.controller.ts:askOrientationQuestion` per subagent 5): constructs a new OpenAI SDK per request, logs `GROK/GROQ loaded: !!apiKey` to stdout. Per-request SDK cost + key presence in logs is a credential-leak surface. **Severity: PII/key in logs.**
 
-11. **H2-3 + ThreadBookmarkButton regression risk (HIGH)** (`apps/frontend/src/components/community/ThreadBookmarkButton.tsx`): the button is now stateless. Any other consumer (e.g. `PostDetailDialog`, `SavedKnowledgePage`) that re-introduces a stale-closure rollback pattern resurrects the H12 bug class. **Severity: latent regression class on H12 fix.**
+11. **S2-6 (HIGH) — `POST /community/:id/resolve` accepts ANY authenticated user (RBAC gap, client-only gate)** (`apps/backend/src/modules/community/community.routes.ts:83`): the frontend restricts the "Resolve" button to admin/moderator/expert, but the backend route has only `protect` middleware — no `authorize(...)`. A regular `user` who crafts a PATCH with `{"answer":"..."}` resolves any post in their program, including posts they didn't author. **Same bug pattern as the original H6 (CreatePostDialog no server-auth)** — client-only gate, missing server enforcement. Fix: tighten route to `protect, authorize('admin','moderator','expert')`. Async delivery added this finding 2026-07-07 11:30.
+
+12. **5.3 + H5-3 (HIGH) — autoAnswer cooldown gate logic** (`apps/backend/src/services/autoAnswer.ts:readPriorResult`): two reports in agreement — `escalated` is mapped to `ask_human` decision, AND the function never inspects `aiAnswerReviewedAt`/`By`, so an admin "ask-ai-again" within the cooldown window silently returns the cached answer with no log line. Subagent 5's version is sharper. **Severity: admin re-runs produce no work, no observability.**
+
+13. **5.14 + S5-H13 (HIGH) — Reputation `awardPoints` dual-write partial + lost-update race** (`apps/backend/src/modules/moderation/reputation.controller.ts:84-90`): updates `User.points` globally THEN calls `awardToUser` (per-program write). If per-program write throws, the global already moved. Plus two concurrent admin awards on the same user both load, both compute, last save wins — `User.points` ends up out of sync with `ReputationLog` history. Fix: atomic `findOneAndUpdate({ _id }, { $inc: { points: delta }, ... })`.
+
+14. **H4-1 + H4-2 (HIGH) — `POST /auth/refresh` no rate limit + no Zod** (`apps/backend/src/modules/auth/auth.controller.ts:622-681`): the refresh endpoint is the natural brute-force target and has neither. Length is unbounded — 10MB strings hit `JWT.verify`. **Severity: token-reuse surface + memory pressure.**
+
+15. **S1 + Subagent 1.1 (HIGH) — `SpurtiChip` uses `user?.id` instead of `user?._id`** (`apps/frontend/src/components/.../SpurtiChip.tsx` per subagent 1): breaks Spurti Points UI for every authenticated user. One-character fix but high blast-radius (GuidedTour + GoldenTicket features both depend on it). **Severity: full feature broken.**
+
+16. **H2-3 + ThreadBookmarkButton regression risk (HIGH)** (`apps/frontend/src/components/community/ThreadBookmarkButton.tsx`): the button is now stateless. Any other consumer (e.g. `PostDetailDialog`, `SavedKnowledgePage`) that re-introduces a stale-closure rollback pattern resurrects the H12 bug class. **Severity: latent regression class on H12 fix.**
 
 ### Cross-cutting patterns observed (judge-curated)
 
@@ -1888,9 +2281,13 @@ These are ordered by severity × blast radius. Fixes 1-3 are unblockers; fixes 4
 
 - **Pattern C — hot-write-path embedding** (5.6 admin-welcome Zoom transcript). Same fix as the recent commits `78d328e` + `5549d01` applied to FAQ + community. Single handler change covers it.
 
-- **Pattern D — dual-write atomicity** (5.14 reputation + earlier community.toggleUpvote M4-5). The codebase already has the `awardPoints`/`awardToUser` dual-write pattern but no rollback. Use a Mongo transaction OR a compensating write.
+- **Pattern D — dual-write atomicity** (5.14 reputation + earlier community.toggleUpvote M4-5 + S5-C4 moderation 3-write). The codebase already has the `awardPoints`/`awardToUser` dual-write pattern but no rollback. Use a Mongo transaction OR a compensating write.
 
-- **Pattern E — Inline ObjectId check vs Zod validation schema drift** (5.1 suspendUserSchema was a proven production-downer). Audit class: any route where `validateBody(...)` is mounted but the controller reads DIFFERENT field names (or vice versa). A simple lint rule — `controller_body_fields ⊆ schema_fields` — would catch this class.
+- **Pattern E — Schema/controller field drift** (5.1 suspendUserSchema was a proven production-downer; **S5-C5 RBAC mismatch on moderation** is the same family). Audit class: any route where `validateBody(...)` is mounted but the controller reads DIFFERENT field names (or vice versa); OR any route where the middleware permits a role set the controller doesn't. A simple lint rule — `controller_body_fields ⊆ schema_fields` plus `adminOnly.allowed ⊆ requireAdmin.allowed` — would catch this class. **Two of the four CRITICALs in this audit are Pattern E.**
+
+- **Pattern F — Cross-program writes without `assertSameProgram`** (S5-C1, S5-C2, S5-C3, S5-C7, S5-H7, S5-H12, S5-M1). The codebase has the helper (`assertSameProgram`) but several admin routes skip it. Centralize: a single `programScope` middleware that reads `req.query.batchId` and attaches `req.programContext`, then every admin controller that touches a per-program resource reads from `req.programContext.batchId` and runs `assertSameProgram`. **Apply once, fixes 7+ findings.**
+
+- **Pattern G — Subagent reports need re-verification against current source** (the H2-2 retraction was a lesson). The judge-mode skill should add: every finding that cites a specific line number MUST be re-verified by reading the file at that line, not by trusting the prior commit message or fix narrative.
 
 ### Out of scope (forwarded to next audit round)
 
