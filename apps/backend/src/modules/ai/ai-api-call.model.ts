@@ -65,6 +65,11 @@ export interface IAiApiCall extends Document {
   httpStatus?: number;        // HTTP status from the upstream provider
   error?: string;             // truncated error message
   errorKind?: string;         // 'timeout' | 'rate_limit' | 'auth' | 'network' | 'unknown'
+  /** Outgoing request body that the upstream rejected (stringified, <=2KB).
+   *  Only populated on failure. Helps admins spot schema mismatches with
+   *  custom / proxied providers — e.g. when a relay renames `model` to
+   *  `modelName` before forwarding to Groq. */
+  requestBody?: string;
 
   // A short correlation id (e.g. request id) so admins can grep logs
   // by request — populated from x-request-id header when present.
@@ -92,6 +97,7 @@ const aiApiCallSchema = new Schema<IAiApiCall>(
     httpStatus: { type: Number },
     error: { type: String },
     errorKind: { type: String },
+    requestBody: { type: String },
     requestId: { type: String },
   },
   {

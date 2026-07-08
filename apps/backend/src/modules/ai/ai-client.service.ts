@@ -325,18 +325,132 @@ export class AiClient {
     // status uniformly across all three call sites.
     const requestStartedAt = Date.now();
 
-    const body: Record<string, unknown> = {
-      modelName: model,
-      max_tokens: maxTokens,
-      temperature,
-      messages,
-    };
+    // v1.80 — per-provider request-body shape. The 5 OpenAI-
+    // compatible providers all use `{ model, messages, temperature,
+    // max_tokens }`, but the field names and edge cases have
+    // diverged across vendors as their APIs evolved. This block
+    // constructs the body each provider actually wants, instead
+    // of sending the same blob to all of them.
+    //
+    // Reference: research July 2026.
+    //   - OpenAI:     `max_tokens` is DEPRECATED in favour of
+    //                 `max_completion_tokens` (o1, o3, GPT-5 ignore
+    //                 `max_tokens`). Older models still accept
+    //                 `max_tokens`. Send BOTH — `max_completion_tokens`
+    //                 is ignored by legacy models, and `max_tokens`
+    //                 is still accepted by everything pre-2025.
+    //   - MiniMax:    OpenAI-compat shim. Canonical field is
+    //                 `max_completion_tokens`; `max_tokens` is
+    //                 deprecated for M2/M1/M3.
+    //   - Gemini:     OpenAI-compat shim silently DROPS `max_tokens`
+    //                 (see router-for-me/CLIProxyAPI#4108). Must
+    //                 send `max_completion_tokens`.
+    //   - xAI Grok:   Full OpenAI-compat. `max_tokens` is the
+    //                 supported field name; no `max_completion_tokens`
+    //                 documented. Use the legacy name.
+    //   - Anthropic:  Different schema entirely — `system` is a
+    //                 TOP-LEVEL field, not a `role:'system'` message.
+    //                 (Claude Sonnet 4.8+ accepts mid-conversation
+    //                 system messages, but the canonical first-turn
+    //                 shape is top-level. Extract and send as `system`.)
+    //   - Custom:     Best-effort OpenAI-compat — send `max_tokens`
+    //                 (most third-party servers understand it; the
+    //                 OpenAI client SDK still emits it by default).
+    let body: Record<string, unknown>;
+    if (config.provider === 'anthropic') {
+      // Extract leading system message(s) into a top-level `system`
+      // field. All four current call sites pass exactly one
+      // `role:'system'` message as element 0, so a single extract
+      // is the common case — but we handle the multi-system case
+      // for forward-compat.
+      const systemParts: string[] = [];
+      const remaining: typeof messages = [];
+      for (const m of messages) {
+        if (m.role === 'system') systemParts.push(m.content);
+        else remaining.push(m);
+      }
+      body = {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages: remaining,
+        ...(systemParts.length > 0 ? { system: systemParts.join('\n\n') } : {}),
+      };
+    } else if (config.provider === 'openai') {
+      // Send both — `max_completion_tokens` is the new canonical,
+      // `max_tokens` keeps backward compat with pre-2025 models
+      // that don't yet understand the new name.
+      body = {
+        model,
+        max_tokens: maxTokens,
+        max_completion_tokens: maxTokens,
+        temperature,
+        messages,
+      };
+    } else if (config.provider === 'minimax' || config.provider === 'gemini') {
+      // Canonical field for both: `max_completion_tokens`.
+      body = {
+        model,
+        max_completion_tokens: maxTokens,
+        temperature,
+        messages,
+      };
+    } else {
+      // xai + custom — classic OpenAI shape, `max_tokens` is the
+      // widely understood name on third-party servers.
+      body = {
+        model,
+        max_tokens: maxTokens,
+        temperature,
+        messages,
+      };
+    }
 
     let url: string;
     if (config.provider === 'anthropic') {
       url = `${config.baseURL}/messages`;
     } else {
       url = `${config.baseURL}/chat/completions`;
+    }
+
+    // v1.80 — custom-provider baseURL normalisation. Admins
+    // often paste a host root like `http://localhost:11434`
+    // (Ollama) without the trailing `/v1`, which would make the
+    // chat call hit `http://localhost:11434/chat/completions`
+    // and 404. If the segment immediately before `/chat/completions`
+    // is not literally `v1`, auto-insert. Existing `/v1` is left
+    // alone; deeper paths (e.g. `/api/v1/chat/completions`) are
+    // also left alone because the segment before `chat` would
+    // already be `v1`.
+    if (config.provider === 'custom') {
+      try {
+        const u = new URL(url);
+        // For `/chat/completions`, parts is ['chat','completions']
+        // and idx === 0. For `/v1/chat/completions`, parts is
+        // ['v1','chat','completions'] and idx === 1 with
+        // parts[0] === 'v1' (skip). For `/foo/chat/completions`,
+        // idx === 1 and parts[0] !== 'v1' (insert).
+        const parts = u.pathname.split('/').filter(Boolean);
+        const idx = parts.indexOf('chat');
+        if (idx >= 0) {
+          if (idx === 0) {
+            // No segment before `chat` — prepend `v1`.
+            parts.unshift('v1');
+            u.pathname = '/' + parts.join('/');
+            url = u.toString();
+          } else if (parts[idx - 1] !== 'v1') {
+            // Segment before `chat` exists but isn't `v1` —
+            // splice `v1` in front of `chat`.
+            parts.splice(idx, 0, 'v1');
+            u.pathname = '/' + parts.join('/');
+            url = u.toString();
+          }
+          // else: segment before `chat` IS `v1` — leave it alone.
+        }
+      } catch {
+        // Malformed URL — let the fetch fail naturally with a
+        // clear network error rather than masking it.
+      }
     }
 
     let res: Response;
@@ -372,6 +486,10 @@ export class AiClient {
         batchId,
         error: err.message,
         status: res.status,
+        // Persist the outgoing body so admins can debug schema mismatches
+        // with custom / proxied providers (e.g. relays that rename `model`
+        // → `modelName` and forward to Groq). Cap at 2KB to keep docs small.
+        requestBody: body,
       });
       throw err;
     }
