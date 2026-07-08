@@ -397,15 +397,20 @@ const ENV_BASE_URL: Record<AIProvider, string> = {
 // Saves a Mongo roundtrip per call when the dashboard hasn't been touched recently.
 
 interface DbOverrides {
-  anthropic: { apiKey: string; baseURL: string; model: string };
-  openai:    { apiKey: string; baseURL: string; model: string };
-  xai:       { apiKey: string; baseURL: string; model: string };
-  minimax:   { apiKey: string; baseURL: string; model: string };
-  gemini:    { apiKey: string; baseURL: string; model: string };
+  // Per-provider DB override. `apiKey` is ALWAYS the empty string
+  // here — we never keep decrypted material in the cache. To get
+  // the actual key, call `config.getApiKey(p)` on the AiConfig
+  // document. `hasKey` is the decrypted-check result, used by
+  // `resolveProviderAsync` to decide which provider is usable.
+  anthropic: { apiKey: '', baseURL: string; model: string; hasKey: boolean };
+  openai:    { apiKey: '', baseURL: string; model: string; hasKey: boolean };
+  xai:       { apiKey: '', baseURL: string; model: string; hasKey: boolean };
+  minimax:   { apiKey: '', baseURL: string; model: string; hasKey: boolean };
+  gemini:    { apiKey: '', baseURL: string; model: string; hasKey: boolean };
   // v1.82 — custom provider carries an extra override that controls
   // the wire-format model field name (see PROVIDER_DEFAULTS /
   // customModelField). Other providers ignore it.
-  custom:    { apiKey: string; baseURL: string; model: string; customModelField: string };
+  custom:    { apiKey: '', baseURL: string; model: string; customModelField: string; hasKey: boolean };
 }
 
 let _cache: { value: DbOverrides; expiresAt: number } | null = null;
@@ -416,7 +421,7 @@ const CACHE_TTL_MS = 5_000;
 // neither exists (the caller falls back to env-var defaults).
 // Cache key includes batchId so per-program lookups don't leak
 // across programs. Cache TTL is the same 5s as the legacy cache.
-let _configCache: { key: string; value: DbOverrides | null; expiresAt: number } | null = null;
+let _configCache: { key: string; value: DbOverrides | null; config: any | null; expiresAt: number } | null = null;
 
 export async function resolveActiveAiConfig(batchId: string | null = null): Promise<DbOverrides | null> {
   const cacheKey = batchId ?? '__global__';
@@ -440,19 +445,25 @@ export async function resolveActiveAiConfig(batchId: string | null = null): Prom
     }
   } catch (err) {
     logger.warn(`[aiProvider] resolveActiveAiConfig failed: ${(err as Error).message}`);
-    _configCache = { key: cacheKey, value: null, expiresAt: Date.now() + CACHE_TTL_MS };
+    _configCache = { key: cacheKey, value: null, config: null, expiresAt: Date.now() + CACHE_TTL_MS };
     return null;
   }
   if (!config) {
-    _configCache = { key: cacheKey, value: null, expiresAt: Date.now() + CACHE_TTL_MS };
+    _configCache = { key: cacheKey, value: null, config: null, expiresAt: Date.now() + CACHE_TTL_MS };
     return null;
   }
   const v: DbOverrides = {
-    anthropic: { apiKey: '', baseURL: config?.providers?.anthropic?.baseURL ?? '', model: config?.providers?.anthropic?.model ?? '' },
-    openai:    { apiKey: '', baseURL: config?.providers?.openai?.baseURL    ?? '', model: config?.providers?.openai?.model    ?? '' },
-    xai:       { apiKey: '', baseURL: config?.providers?.xai?.baseURL       ?? '', model: config?.providers?.xai?.model       ?? '' },
-    minimax:   { apiKey: '', baseURL: config?.providers?.minimax?.baseURL   ?? '', model: config?.providers?.minimax?.model   ?? '' },
-    gemini:    { apiKey: '', baseURL: config?.providers?.gemini?.baseURL    ?? '', model: config?.providers?.gemini?.model    ?? '' },
+    // `hasKey` is computed here so `resolveProviderAsync` can pick
+    // the right provider without round-tripping to Mongoose on every
+    // call. `apiKey` stays empty in the cache — we never keep
+    // decrypted material in memory longer than the single call that
+    // uses it. The actual key is fetched via `config.getApiKey(p)` at
+    // the final resolution site (see `resolveProviderAsync`).
+    anthropic: { apiKey: '', baseURL: config?.providers?.anthropic?.baseURL ?? '', model: config?.providers?.anthropic?.model ?? '', hasKey: !!(config?.getApiKey?.('anthropic') || process.env.ANTHROPIC_API_KEY) },
+    openai:    { apiKey: '', baseURL: config?.providers?.openai?.baseURL    ?? '', model: config?.providers?.openai?.model    ?? '', hasKey: !!(config?.getApiKey?.('openai')    || process.env.OPENAI_API_KEY) },
+    xai:       { apiKey: '', baseURL: config?.providers?.xai?.baseURL       ?? '', model: config?.providers?.xai?.model       ?? '', hasKey: !!(config?.getApiKey?.('xai')       || process.env.XAI_API_KEY) },
+    minimax:   { apiKey: '', baseURL: config?.providers?.minimax?.baseURL   ?? '', model: config?.providers?.minimax?.model   ?? '', hasKey: !!(config?.getApiKey?.('minimax')   || process.env.MINIMAX_API_KEY) },
+    gemini:    { apiKey: '', baseURL: config?.providers?.gemini?.baseURL    ?? '', model: config?.providers?.gemini?.model    ?? '', hasKey: !!(config?.getApiKey?.('gemini')    || process.env.GEMINI_API_KEY) },
     // v1.82 — custom provider carries an extra override. Legacy
     // docs (pre-v1.82) won't have the field set; treat missing as
     // empty string so the resolver chain falls through to the env
@@ -462,9 +473,10 @@ export async function resolveActiveAiConfig(batchId: string | null = null): Prom
       baseURL: config?.providers?.custom?.baseURL ?? '',
       model:   config?.providers?.custom?.model   ?? '',
       customModelField: config?.providers?.custom?.customModelField ?? '',
+      hasKey: !!(config?.getApiKey?.('custom') || process.env.CUSTOM_API_KEY),
     },
   };
-  _configCache = { key: cacheKey, value: v, expiresAt: Date.now() + CACHE_TTL_MS };
+  _configCache = { key: cacheKey, value: v, config, expiresAt: Date.now() + CACHE_TTL_MS };
   return v;
 }
 
@@ -475,26 +487,38 @@ export async function resolveActiveAiConfig(batchId: string | null = null): Prom
 // behaviour. The cache key is __global__ so per-program lookups
 // (added below) have a separate cache slot.
 export async function loadDbOverrides(): Promise<DbOverrides> {
+  const r = await loadDbOverridesWithConfig();
+  return r.db;
+}
+
+/**
+ * v1.82 — Same as `loadDbOverrides()` but also returns the live
+ * `config` mongoose doc alongside the parsed `DbOverrides`. The doc
+ * is needed to call `config.getApiKey(p)` for the actual decrypted
+ * API key (we never cache decrypted material in `DbOverrides`).
+ *
+ * Falls back to `config: null` when the DB is empty — the call site
+ * then uses env-var keys only.
+ */
+export async function loadDbOverridesWithConfig(): Promise<{ db: DbOverrides; config: any }> {
+  // Belt-and-braces. Check the legacy _cache first so we don't
+  // round-trip Mongo when the cache is warm.
+  if (_cache && _cache.expiresAt > Date.now()) {
+    return { db: _cache.value, config: _configCache?.config ?? null };
+  }
   const resolved = await resolveActiveAiConfig(null);
   if (resolved) {
-    _cache = { value: resolved, expiresAt: Date.now() + CACHE_TTL_MS };
-    return resolved;
+    return { db: resolved, config: _configCache?.config ?? null };
   }
-  // v1.69 — Phase 4: belt-and-braces. resolveActiveAiConfig
-  // returned null (e.g. no active doc in DB). Fall back to
-  // empty overrides so every provider resolves to env-var
-  // defaults.
-  if (_cache && _cache.expiresAt > Date.now()) return _cache.value;
   const empty: DbOverrides = {
-    anthropic: { apiKey: '', baseURL: '', model: '' },
-    openai:    { apiKey: '', baseURL: '', model: '' },
-    xai:       { apiKey: '', baseURL: '', model: '' },
-    minimax:   { apiKey: '', baseURL: '', model: '' },
-    gemini:    { apiKey: '', baseURL: '', model: '' },
-    custom:    { apiKey: '', baseURL: '', model: '', customModelField: '' },
+    anthropic: { apiKey: '', baseURL: '', model: '', hasKey: false },
+    openai:    { apiKey: '', baseURL: '', model: '', hasKey: false },
+    xai:       { apiKey: '', baseURL: '', model: '', hasKey: false },
+    minimax:   { apiKey: '', baseURL: '', model: '', hasKey: false },
+    gemini:    { apiKey: '', baseURL: '', model: '', hasKey: false },
+    custom:    { apiKey: '', baseURL: '', model: '', customModelField: '', hasKey: false },
   };
-  _cache = { value: empty, expiresAt: Date.now() + CACHE_TTL_MS };
-  return empty;
+  return { db: empty, config: null };
 }
 
 /** Invalidate the DB override cache. Call after admin updates config. */
@@ -509,8 +533,14 @@ export function invalidateProviderCache(): void {
  * Build a full ProviderConfig for a given provider, applying DB → env → default order.
  */
 export async function resolveProviderAsync(provider?: AIProvider): Promise<ProviderConfig> {
-  const db = await loadDbOverrides();
-  const hasKey = (p: AIProvider) => !!(db[p].apiKey || envKey(p));
+  // v1.82 — use the with-config variant so we can decrypt the
+  // cipher at the final apiKey resolution step (we never cache
+  // decrypted material in `DbOverrides`).
+  const { db, config } = await loadDbOverridesWithConfig();
+  // hasKey now consults the per-provider boolean we computed in
+  // resolveActiveAiConfig (which decodes the cipher). The
+  // fallback to envKey handles the no-DB case.
+  const hasKey = (p: AIProvider) => !!(db[p].hasKey || envKey(p));
 
   let chosen: AIProvider;
   if (provider && hasKey(provider)) {
@@ -527,11 +557,17 @@ export async function resolveProviderAsync(provider?: AIProvider): Promise<Provi
     }
   }
 
-  const override = db[chosen] as { apiKey: string; baseURL: string; model: string; customModelField?: string };
-  const apiKey = override.apiKey || envKey(chosen) || '';
+  const override = db[chosen] as { apiKey: '', baseURL: string; model: string; customModelField?: string };
+  // Real key resolution. `db[chosen].apiKey` is the empty string
+  // (the cache never stores decrypted material) so we always go
+  // through `config.getApiKey(chosen)` (which decrypts the cipher)
+  // and fall back to the env var.
+  const apiKey = (config?.getApiKey?.(chosen) as string | null | undefined)
+    || override.apiKey
+    || envKey(chosen)
+    || '';
   const baseURL = (override.baseURL || process.env[ENV_BASE_URL[chosen]] || DEFAULT_BASE_URLS[chosen]).replace(/\/$/, '');
   const model = getModelForProvider(override.model || process.env[ENV_MODEL[chosen]] || DEFAULT_MODELS[chosen], chosen, override.model);
-
   if (!model) {
     throw new Error(`No AI model configured for provider '${chosen}'. Please configure a model in Admin Settings.`);
   }
