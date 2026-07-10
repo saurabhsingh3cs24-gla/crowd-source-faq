@@ -61,7 +61,36 @@ export async function connectZoom(req: Request, res: Response): Promise<void> {
     res.json({ authUrl, batchId });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Zoom connect failed';
-    adminLog.warn(`[Zoom OAuth] connect failed for user ${userId}: ${msg}`);
+    adminLog.warn(`[Zoom OAuth] connect failed for user ${userId} (batch=${batchId ?? 'global'}): ${msg}`);
+    // v1.85 — distinguish between "this is a config issue the
+    // operator must fix" (env vars missing, decryption failed) and
+    // a genuine server bug. The former returns 503 + a structured
+    // `errorCode` so the admin page can surface a useful message
+    // instead of a generic "Server error". `Missing ZOOM_CLIENT_ID
+    // env var` and `Missing ZOOM_CLIENT_SECRET env var` come from
+    // `getProgramZoomConfig` when neither the per-program doc nor
+    // the env-var fallback is configured.
+    const lower = msg.toLowerCase();
+    const isConfigIssue =
+      lower.includes('missing zoom_client_id') ||
+      lower.includes('missing zoom_client_secret') ||
+      lower.includes('failed to decrypt') ||
+      lower.includes('oauphdstate_secret');
+    if (isConfigIssue) {
+      res.status(503).json({
+        message: 'zoom connect failed — server not configured',
+        error: msg,
+        errorCode: lower.includes('decrypt')
+          ? 'decryption_failed'
+          : lower.includes('oauphdstate_secret')
+            ? 'oauth_state_secret_missing'
+            : 'zoom_credentials_missing',
+        remediation: lower.includes('oauphdstate_secret')
+          ? 'Set OAUTH_STATE_SECRET (or JWT_SECRET) on the backend. Without it, the state HMAC cannot be signed.'
+          : 'Either set ZOOM_CLIENT_ID + ZOOM_CLIENT_SECRET env vars on the backend, or store per-program Zoom credentials via Admin → Programs → Zoom Settings.',
+      });
+      return;
+    }
     res.status(500).json({ message: 'zoom connect failed', error: msg });
   }
 }
