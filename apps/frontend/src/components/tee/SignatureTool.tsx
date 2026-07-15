@@ -92,6 +92,22 @@ export default function SignatureTool({
   /** Which face the user wants to sign — front or back */
   const [signingFace, setSigningFace] = useState<'front' | 'back'>('back');
 
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [originalSize, setOriginalSize] = useState<number>(0);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(selectedFile);
+    setPreviewUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [selectedFile]);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const drawingRef = useRef(false);
   // We accumulate ALL points of the current stroke here.
@@ -230,9 +246,34 @@ export default function SignatureTool({
 
   const finishDraw = () => {
     const dataUrl = canvasRef.current!.toDataURL('image/png');
+    const base64Str = dataUrl.split(',')[1];
+    const originalBytesSize = base64Str ? Math.floor(base64Str.length * 0.75) : 0;
+    setOriginalSize(originalBytesSize);
+
     const defaultX = signingFace === 'front' ? 0.3 : 0.7;
     setPendingSig({ id: `tmp-${Date.now()}`, dataUrl, face: signingFace, x: defaultX, y: 0.55, scale: 0.6, rotation: 0 });
     setPhase('place');
+  };
+
+  const validateFile = (file: File): boolean => {
+    const maxSize = 500 * 1024; // 500 KB
+    const validTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const validExts = ['png', 'jpg', 'jpeg'];
+    
+    const isValidType = validTypes.includes(file.type) || (ext && validExts.includes(ext));
+    const isValidSize = file.size <= maxSize;
+    
+    if (!isValidType || !isValidSize) {
+      setError('Signature image must be a PNG or JPG and smaller than 500 KB.');
+      setSelectedFile(null);
+      return false;
+    }
+    
+    setError(null);
+    setSelectedFile(file);
+    setOriginalSize(file.size);
+    return true;
   };
 
   // ── Upload ─────────────────────────────────────────────────────────
@@ -259,13 +300,29 @@ export default function SignatureTool({
     setError(null);
     setPhase('submitting');
     try {
+      const signatureBlob = dataURLtoBlob(pendingSig.dataUrl);
+      const payloadSize = signatureBlob.size;
+      const contentType = 'multipart/form-data';
+
+      console.log('Original file size:', originalSize);
+      console.log('Payload size:', payloadSize);
+      console.log('Content-Type:', contentType);
+      console.log('Content-Length:', payloadSize);
+
+      const formData = new FormData();
+      formData.append('signerName', signerName.trim());
+      formData.append('face', pendingSig.face ?? 'back');
+      formData.append('x', String(pendingSig.x));
+      formData.append('y', String(pendingSig.y));
+      formData.append('scale', String(pendingSig.scale));
+      formData.append('rotation', String(pendingSig.rotation));
+      formData.append('signature', signatureBlob, 'signature.png');
+
       const api = (await import('../../utils/api')).default;
-      const r = await api.post(`/tee/share/${shareId}/sign`, {
-        signerName: signerName.trim(),
-        signerDataUrl: pendingSig.dataUrl,
-        face: pendingSig.face ?? 'back',
-        x: pendingSig.x, y: pendingSig.y,
-        scale: pendingSig.scale, rotation: pendingSig.rotation,
+      const r = await api.post(`/tee/share/${shareId}/sign`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
       const sig = r.data?.signature;
       if (!sig) throw new Error('Server did not return the saved signature.');
@@ -276,7 +333,8 @@ export default function SignatureTool({
         scale: sig.scale ?? pendingSig.scale, rotation: sig.rotation ?? pendingSig.rotation,
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save the signature.');
+      const { friendlyError } = await import('../../utils/api');
+      setError(friendlyError(err, 'Could not save the signature.'));
       setPhase('place');
     }
   };
@@ -408,15 +466,47 @@ export default function SignatureTool({
 
                 {/* ── Upload tab ── */}
                 {tab === 'upload' && (
-                  <label className="block border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:bg-mist/60 transition-colors">
-                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden"
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); }} />
-                    <svg className="mx-auto mb-2 text-ink-faint" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
-                    </svg>
-                    <p className="text-sm text-ink-soft">Drop an image here or tap to choose.</p>
-                    <p className="text-xs text-ink-faint mt-1">White paper works best. PNG/JPG. We'll auto-remove the background.</p>
-                  </label>
+                  <div className="space-y-4">
+                    <label className="block border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:bg-mist/60 transition-colors">
+                      <input type="file" accept="image/png,image/jpeg" className="hidden"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) validateFile(f); }} />
+                      <svg className="mx-auto mb-2 text-ink-faint" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      {selectedFile ? (
+                        <div className="flex flex-col items-center gap-2">
+                          {previewUrl && (
+                            <img
+                              src={previewUrl}
+                              alt="Signature preview"
+                              className="max-h-24 max-w-[200px] object-contain rounded-lg border border-border bg-white/5 p-1 mb-2 mx-auto shadow-sm"
+                            />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium text-ink">✓ File selected</p>
+                            <p className="text-xs text-ink-soft mt-1">{selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="text-sm text-ink-soft">Drop an image here or tap to choose.</p>
+                          <p className="text-xs text-ink-faint mt-1">White paper works best. PNG/JPG. Max 500 KB.</p>
+                        </div>
+                      )}
+                    </label>
+                    <div className="flex gap-2 justify-end">
+                      {selectedFile && (
+                        <button type="button" onClick={() => setSelectedFile(null)}
+                          className="px-3 py-1.5 rounded-lg text-xs text-ink-soft hover:text-ink hover:bg-mist transition-colors">
+                          Clear File
+                        </button>
+                      )}
+                      <button type="button" onClick={() => { if (selectedFile) handleUpload(selectedFile); }} disabled={!selectedFile}
+                        className="px-4 py-1.5 rounded-lg bg-accent text-accent-text text-xs font-semibold hover:bg-accent-hover transition-colors disabled:opacity-40">
+                        Use this signature →
+                      </button>
+                    </div>
+                  </div>
                 )}
 
                 {/* Signer name */}
@@ -487,6 +577,18 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
       {children}
     </button>
   );
+}
+
+function dataURLtoBlob(dataurl: string): Blob {
+  const arr = dataurl.split(',');
+  const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new Blob([u8arr], { type: mime });
 }
 
 void SignatureTool;

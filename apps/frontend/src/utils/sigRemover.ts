@@ -57,12 +57,25 @@ export async function removeSignatureBackground(
   const url = URL.createObjectURL(file);
   try {
     const img = opts.source ?? (await loadImage(url));
+    let width = img.width;
+    let height = img.height;
+    const MAX_DIM = 1000;
+    if (width > MAX_DIM || height > MAX_DIM) {
+      if (width > height) {
+        height = Math.round((height * MAX_DIM) / width);
+        width = MAX_DIM;
+      } else {
+        width = Math.round((width * MAX_DIM) / height);
+        height = MAX_DIM;
+      }
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) throw new Error('Canvas 2D not available');
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(img, 0, 0, width, height);
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     // 1. Find the dominant corner colour. We sample a small

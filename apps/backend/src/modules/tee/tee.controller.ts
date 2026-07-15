@@ -321,7 +321,20 @@ export const getSharedTee = async (req: Request, res: Response): Promise<void> =
 export const addSignatureToTee = async (req: Request, res: Response): Promise<void> => {
   try {
     const shareId = String(req.params.shareId || '');
-    const parsed = teeSignatureSchema.safeParse(req.body);
+    
+    // Preprocess fields from multipart/form-data (strings to numbers)
+    const body = { ...req.body };
+    if (typeof body.x === 'string') body.x = parseFloat(body.x);
+    if (typeof body.y === 'string') body.y = parseFloat(body.y);
+    if (typeof body.scale === 'string') body.scale = parseFloat(body.scale);
+    if (typeof body.rotation === 'string') body.rotation = parseFloat(body.rotation);
+
+    const file = (req as Request & { file?: Express.Multer.File }).file;
+    if (file) {
+      body.signerDataUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+    }
+
+    const parsed = teeSignatureSchema.safeParse(body);
     if (!parsed.success) {
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
